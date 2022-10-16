@@ -1,0 +1,1 @@
+xbuild /p:Configuration=Release 051colormap.csproj
