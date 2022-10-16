@@ -82,6 +82,9 @@ namespace _051colormap
     }
     public void CalculateCentroid ()
     {
+      if (points.Count <= 1)
+        return;
+
       points[0] = new Point3D();
       for (int i = 1; i < points.Count; i++)
         points[0] += points[i];
@@ -108,13 +111,11 @@ namespace _051colormap
     /// <param name="colors">Output palette (array of colors).</param>
     public static void Generate (Bitmap input, int numCol, out Color[] colors)
     {
-      colors = new Color[numCol];            // accepting the required palette size..
-
       // Settings
-      int adjustedWidth = 300;
-      int iterationCount = 10;
-      int xSensitivity = 10;
-      int ySensitivity = 10;
+      int adjustedWidth = 400;
+      int iterationCount = 15;
+      int xSensitivity = 5;
+      int ySensitivity = 5;
 
       int width  = input.Width;
       int height = input.Height;
@@ -128,7 +129,7 @@ namespace _051colormap
         input.SetResolution(width, height);
       }
 
-      MessageBox.Show($"{input.HorizontalResolution}, {input.VerticalResolution}");
+      //MessageBox.Show($"{input.HorizontalResolution}, {input.VerticalResolution}");
 
       Point3D[,] points;
       GetPixels(input, out points);
@@ -139,6 +140,7 @@ namespace _051colormap
 
       Cluster[] clusters = new Cluster[numCol];
       InitializeClusters(clusters, points);
+      //MessageBox.Show(string.Join<Cluster>(", ", clusters));
 
       // Iterate
       for (int iteration = 0; iteration < iterationCount; iteration++)
@@ -148,13 +150,26 @@ namespace _051colormap
           cluster.CalculateCentroid();
       }
 
-      // Debug
-      string output = "";
+      // Append colors to an array
+      List<Color> colorList = new List<Color>();
       for (int i = 0; i < numCol; i++)
-        output += $"{i}. CLUSTER: " + clusters[i].ToString() + "\n";
-      MessageBox.Show(output);
+      {
+        Point3D centroid = clusters[i].Centroid;
+        colorList.Add(Color.FromArgb(centroid.X, centroid.Y, centroid.Z));
+      }
+
+      // Sort colors
+      colorList.Sort((c1, c2) => c1.GetBrightness() > c2.GetBrightness() ? 1 : 0);
+      colors = colorList.ToArray();
     }
 
+    /// <summary>
+    /// Assigns points to clusters.
+    /// </summary>
+    /// <param name="clusters">Array of clusters.</param>
+    /// <param name="points">Array of points.</param>
+    /// <param name="xSens">X-axis senstivity.</param>
+    /// <param name="ySens">Y-axis senstivity.</param>
     private static void AssignPoints (Cluster[] clusters, Point3D[,] points, int xSens, int ySens)
     {
       foreach (var cluster in clusters)
@@ -186,21 +201,18 @@ namespace _051colormap
     /// <param name="points">Array of points to choose centroids from.</param>
     private static void InitializeClusters (Cluster[] clusters, Point3D[,] points)
     {
-      int dimX = points.GetLength(0);
-      int dimY = points.GetLength(1);
-      Random rand = new Random();
-      HashSet<Point3D> usedPoints = new HashSet<Point3D>();
+      // Translation vector
+      int dx = points.GetLength(0) / (clusters.Length + 1);
+      int dy = points.GetLength(1) / (clusters.Length + 1);
 
-      int i = 0;
-      while (i < clusters.Length)
+      int x = dx;
+      int y = dy;
+      // Linear interpolation
+      for (int i = 0; i < clusters.Length; i++)
       {
-        Point3D point = points[rand.Next(dimX), rand.Next(dimY)];
-        if (usedPoints.Contains(point))
-          continue;
-
-        usedPoints.Add(point);
-        clusters[i] = new Cluster(point);
-        i++;
+        clusters[i] = new Cluster(points[x, y]);
+        x += dx;
+        y += dy;
       }
     }
 

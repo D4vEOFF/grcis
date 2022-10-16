@@ -14,7 +14,7 @@ namespace _098svg
     /// <summary>
     /// Put your name here.
     /// </summary>
-    public string name = "Josef Pelikán";
+    public string name = "David Weber";
 
     /// <summary>
     /// Singleton instance.
