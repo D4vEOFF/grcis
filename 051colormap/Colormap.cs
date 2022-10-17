@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using System.Xml;
 using MathSupport;
 
 namespace _051colormap
@@ -112,10 +113,11 @@ namespace _051colormap
     public static void Generate (Bitmap input, int numCol, out Color[] colors)
     {
       // Settings
-      int adjustedWidth = 400;
+      int adjustedWidth = 300;
       int iterationCount = 15;
-      int xSensitivity = 5;
-      int ySensitivity = 5;
+      int clusterMultiplier = 2;
+      int xSensitivity = 3;
+      int ySensitivity = 3;
 
       int width  = input.Width;
       int height = input.Height;
@@ -138,7 +140,7 @@ namespace _051colormap
       /* Perform clustering using the K-means algorithm */
       ////////////////////////////////////////////////////
 
-      Cluster[] clusters = new Cluster[numCol];
+      Cluster[] clusters = new Cluster[clusterMultiplier * numCol];
       InitializeClusters(clusters, points);
       //MessageBox.Show(string.Join<Cluster>(", ", clusters));
 
@@ -150,16 +152,19 @@ namespace _051colormap
           cluster.CalculateCentroid();
       }
 
-      // Append colors to an array
+      // Select the most dominant colors
+      List<Cluster> clustersSorted = clusters.ToList();
+      clustersSorted.Sort((cl1, cl2) => - cl1.Points.Count.CompareTo(cl2.Points.Count));           // Sort clusters according to the amount of included points
+
       List<Color> colorList = new List<Color>();
-      for (int i = 0; i < numCol; i++)
+      for (int i = 0; i < clustersSorted.Count; i += clusterMultiplier)
       {
-        Point3D centroid = clusters[i].Centroid;
+        Point3D centroid = clustersSorted[i].Centroid;
         colorList.Add(Color.FromArgb(centroid.X, centroid.Y, centroid.Z));
       }
 
       // Sort colors
-      colorList.Sort((c1, c2) => c1.GetBrightness() > c2.GetBrightness() ? 1 : 0);
+      colorList.Sort((c1, c2) => - c1.GetBrightness().CompareTo(c2.GetBrightness()));
       colors = colorList.ToArray();
     }
 
@@ -207,6 +212,7 @@ namespace _051colormap
 
       int x = dx;
       int y = dy;
+
       // Linear interpolation
       for (int i = 0; i < clusters.Length; i++)
       {
