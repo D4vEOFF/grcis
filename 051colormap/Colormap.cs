@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using System.Xml;
 using MathSupport;
 
+
 namespace _051colormap
 {
   struct Point3D
@@ -56,17 +57,23 @@ namespace _051colormap
   class Cluster
   {
     private List<Point3D> points;
+    private float centroidChangeSquared;
     /// <summary>
     /// Cluster centroid.
     /// </summary>
     public Point3D Centroid { get => points[0]; }
+    public float CentroidChangeSquared { get => centroidChangeSquared;  }
 
     /// <summary>
     /// Points included in the cluster.
     /// </summary>
     public IReadOnlyList<Point3D> Points { get => points.AsReadOnly(); }
 
-    public Cluster(Point3D centroid) => points = new List<Point3D> { centroid };
+    public Cluster (Point3D centroid)
+    {
+      centroidChangeSquared = float.PositiveInfinity;
+      points = new List<Point3D> { centroid };
+    }
     /// <summary>
     /// Adds a point into the cluster.
     /// </summary>
@@ -86,16 +93,33 @@ namespace _051colormap
       if (points.Count <= 1)
         return;
 
+      Point3D oldCentroid = points[0];
+
       points[0] = new Point3D();
       for (int i = 1; i < points.Count; i++)
         points[0] += points[i];
       points[0] /= points.Count - 1;
+
+      // Calculate centroid change
+      Point3D newCentroid = points[0];
+      float dx = newCentroid.X - oldCentroid.X;
+      float dy = newCentroid.Y - oldCentroid.Y;
+      float dz = newCentroid.Z - oldCentroid.Z;
+      centroidChangeSquared = dx * dx + dy * dy + dz * dz;
     }
     public override string ToString () => string.Join(", ", points);
   }
 
   class Colormap
   {
+    // Settings
+    static int adjustedWidth = 400;
+    static int eightBitClusterCount = 256;
+    static int iterationCount = 50;
+    static int minImageSize = 100;
+    static int xSensitivity = 3;
+    static int ySensitivity = 3;
+
     /// <summary>
     /// Form data initialization.
     /// </summary>
@@ -112,16 +136,16 @@ namespace _051colormap
     /// <param name="colors">Output palette (array of colors).</param>
     public static void Generate (Bitmap input, int numCol, out Color[] colors)
     {
-      // Settings
-      int adjustedWidth = 300;
-      int iterationCount = 15;
-      int clusterMultiplier = 2;
-      int xSensitivity = 3;
-      int ySensitivity = 3;
-
       int width  = input.Width;
       int height = input.Height;
       int adjustedHeight = adjustedWidth * height / width;
+
+      // If image too small, maximize sensitivity
+      if (width <= minImageSize && height <= minImageSize)
+      {
+        xSensitivity = 1;
+        ySensitivity = 1;
+      }
 
       // Resize the image if bigger
       if (width > adjustedWidth)
@@ -131,23 +155,23 @@ namespace _051colormap
         input.SetResolution(width, height);
       }
 
-      //MessageBox.Show($"{input.HorizontalResolution}, {input.VerticalResolution}");
-
-      Point3D[,] points;
+      List<Point3D> points;
       GetPixels(input, out points);
 
       ////////////////////////////////////////////////////
       /* Perform clustering using the K-means algorithm */
       ////////////////////////////////////////////////////
 
-      Cluster[] clusters = new Cluster[clusterMultiplier * numCol];
-      InitializeClusters(clusters, points);
-      //MessageBox.Show(string.Join<Cluster>(", ", clusters));
+      // Add white color if no points are present
+      if (points.Count == 0)
+        points.Add(new Point3D(255, 255, 255));
+
+      Cluster[] clusters = InitializeClusters(input, points, numCol, width, height);
 
       // Iterate
       for (int iteration = 0; iteration < iterationCount; iteration++)
       {
-        AssignPoints(clusters, points, xSensitivity, ySensitivity);
+        AssignPoints(clusters, points, height);
         foreach (var cluster in clusters)
           cluster.CalculateCentroid();
       }
@@ -156,8 +180,9 @@ namespace _051colormap
       List<Cluster> clustersSorted = clusters.ToList();
       clustersSorted.Sort((cl1, cl2) => - cl1.Points.Count.CompareTo(cl2.Points.Count));           // Sort clusters according to the amount of included points
 
+      // Convert centroids to colors
       List<Color> colorList = new List<Color>();
-      for (int i = 0; i < clustersSorted.Count; i += clusterMultiplier)
+      for (int i = 0; i < clustersSorted.Count; i += clustersSorted.Count / numCol)
       {
         Point3D centroid = clustersSorted[i].Centroid;
         colorList.Add(Color.FromArgb(centroid.X, centroid.Y, centroid.Z));
@@ -173,53 +198,48 @@ namespace _051colormap
     /// </summary>
     /// <param name="clusters">Array of clusters.</param>
     /// <param name="points">Array of points.</param>
-    /// <param name="xSens">X-axis senstivity.</param>
-    /// <param name="ySens">Y-axis senstivity.</param>
-    private static void AssignPoints (Cluster[] clusters, Point3D[,] points, int xSens, int ySens)
+    private static void AssignPoints (Cluster[] clusters, List<Point3D> points, int height)
     {
       foreach (var cluster in clusters)
         cluster.Clear();
 
-      for (int i = 0; i < points.GetLength(0); i += xSens)
-        for (int j = 0; j < points.GetLength(1); j += ySens)
+      for (int i = 0; i < points.Count; i += xSensitivity + ySensitivity * height)
+      {
+        float smallestDist = float.PositiveInfinity;
+        int clusterIndex = -1;
+        for (int k = 0; k < clusters.Length; k++)
         {
-          Point3D point = points[i, j];
-          float smallestDist = float.PositiveInfinity;
-          int clusterIndex = -1;
-          for (int k = 0; k < clusters.Length; k++)
+          float dist = EuclidSquared(points[i], clusters[k].Centroid);
+          if (dist < smallestDist)
           {
-            float dist = EuclidSquared(point, clusters[k].Centroid);
-            if (dist < smallestDist)
-            {
-              smallestDist = dist;
-              clusterIndex = k;
-            }
+            smallestDist = dist;
+            clusterIndex = k;
           }
-
-          clusters[clusterIndex].Add(point);
         }
+
+        clusters[clusterIndex].Add(points[i]);
+      }
     }
     /// <summary>
     /// Initializes clusters.
     /// </summary>
-    /// <param name="clusters">Array of clusters.</param>
     /// <param name="points">Array of points to choose centroids from.</param>
-    private static void InitializeClusters (Cluster[] clusters, Point3D[,] points)
+    /// <returns>Array of one-centroided clusters.</returns>
+    private static Cluster[] InitializeClusters (Bitmap input, List<Point3D> points, int numCol, int width, int length)
     {
-      // Translation vector
-      int dx = points.GetLength(0) / (clusters.Length + 1);
-      int dy = points.GetLength(1) / (clusters.Length + 1);
+      int formatSize = Image.GetPixelFormatSize(input.PixelFormat);
+      if (formatSize <= 8)
+        numCol = eightBitClusterCount;
 
-      int x = dx;
-      int y = dy;
+      Cluster[] clusters = new Cluster[numCol];
 
-      // Linear interpolation
+      // Translation
+      int translate = points.Count / (clusters.Length + 1);
+
       for (int i = 0; i < clusters.Length; i++)
-      {
-        clusters[i] = new Cluster(points[x, y]);
-        x += dx;
-        y += dy;
-      }
+        clusters[i] = new Cluster(points[i * translate]);
+
+      return clusters;
     }
 
     /// <summary>
@@ -227,16 +247,17 @@ namespace _051colormap
     /// </summary>
     /// <param name="bitmap">Bitmap.</param>
     /// <param name="points">Array with the retrieved colors.</param>
-    private static void GetPixels (Bitmap bitmap, out Point3D[,] points)
+    private static void GetPixels (Bitmap bitmap, out List<Point3D> points)
     {
       int width = bitmap.Width;
       int height = bitmap.Height;
-      points = new Point3D[width, height];
+      points = new List<Point3D>();
       for (int i = 0; i < width; i++)
         for (int j = 0; j < height; j++)
         {
           Color pixelColor = bitmap.GetPixel(i, j);
-          points[i, j] = new Point3D(pixelColor.R, pixelColor.G, pixelColor.B);
+          if (pixelColor.A > 5)
+            points.Add(new Point3D(pixelColor.R, pixelColor.G, pixelColor.B));
         }
     }
 
