@@ -117,8 +117,8 @@ namespace _051colormap
     static int eightBitClusterCount = 256;
     static int iterationCount = 50;
     static int minImageSize = 100;
-    static int xSensitivity = 3;
-    static int ySensitivity = 3;
+    static int xSensitivity = 2;
+    static int ySensitivity = 2;
 
     /// <summary>
     /// Form data initialization.
@@ -166,7 +166,7 @@ namespace _051colormap
       if (points.Count == 0)
         points.Add(new Point3D(255, 255, 255));
 
-      Cluster[] clusters = InitializeClusters(input, points, numCol, width, height);
+      Cluster[] clusters = InitializeClusters(input, points, numCol);
 
       // Iterate
       for (int iteration = 0; iteration < iterationCount; iteration++)
@@ -225,7 +225,7 @@ namespace _051colormap
     /// </summary>
     /// <param name="points">Array of points to choose centroids from.</param>
     /// <returns>Array of one-centroided clusters.</returns>
-    private static Cluster[] InitializeClusters (Bitmap input, List<Point3D> points, int numCol, int width, int length)
+    private static Cluster[] InitializeClusters (Bitmap input, List<Point3D> points, int numCol)
     {
       int formatSize = Image.GetPixelFormatSize(input.PixelFormat);
       if (formatSize <= 8)
