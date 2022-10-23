@@ -19,7 +19,7 @@ namespace _082circles
     public static void InitParams (out string name, out int wid, out int hei, out string param, out string tooltip)
     {
       // {{
-      name    = "Josef Pelikán";
+      name    = "David Weber";
       wid     = 800;
       hei     = 520;
       param   = "12";

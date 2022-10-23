@@ -2,7 +2,10 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using MathSupport;
 using OpenTK;
 using Utilities;
@@ -197,6 +200,226 @@ namespace _098svg
     }
   }
 
+  internal class Vertex : IEquatable<Vertex>
+  {
+    private HashSet<Vertex> neighbors;
+    private Vector2 gridPosition;
+    /// <summary>
+    /// Neighbor list of the vertex.
+    /// </summary>
+    internal IReadOnlyList<Vertex> Neighbors => neighbors.ToList();
+    /// <summary>
+    /// Vertex position in the grid.
+    /// </summary>
+    internal Vector2 GridPosition => gridPosition;
+    /// <summary>
+    /// Creates a new vertex instance.
+    /// </summary>
+    /// <param name="gridPosition">Vertex position in the grid.</param>
+    /// <param name="neighbors">List of vertices the vertex is connected to.</param>
+    internal Vertex (int x, int y, params Vertex[] neighbors)
+    {
+      this.gridPosition = new Vector2(x, y);
+      this.neighbors = new HashSet<Vertex>(neighbors);
+    }
+    /// <summary>
+    /// Adds a vertex to the neighbor list.
+    /// </summary>
+    /// <param name="neighbor">Vertex to become a new neighbor.</param>
+    /// <returns>True, if vertex not already a neighbor, otherwise false.</returns>
+    internal bool AddNeighbor(Vertex neighbor)
+    {
+      if (neighbors.Contains(neighbor))
+        return false;
+      neighbors.Add(neighbor);
+      return true;
+    }
+    public override string ToString ()
+    {
+      List<string> neighborPositions = new List<string>();
+      foreach (var neighbor in neighbors)
+        neighborPositions.Add(neighbor.GridPosition.ToString());
+      return neighbors.Count == 0 ? gridPosition.ToString() : $"{gridPosition}: " + string.Join(", ", neighborPositions);
+    }
+    public static bool operator ==(Vertex u, Vertex v)
+    {
+      return u.Equals(v);
+    }
+    public static bool operator != (Vertex u, Vertex v)
+    {
+      return !(u == v);
+    }
+    public override bool Equals (object obj)
+    {
+      if (!(obj is Vertex))
+        return false;
+      return this.Equals((Vertex)obj);
+    }
+    public bool Equals(Vertex v)
+    {
+      if (v is null)
+        return false;
+      return this.gridPosition == v.gridPosition;
+    }
+
+    public override int GetHashCode ()
+    {
+      int hashCode = -162320100;
+      foreach (var neighbor in neighbors)
+        hashCode = hashCode * -1521134295 + (int)Math.Round(neighbor.GridPosition.X * 39387458 + neighbor.GridPosition.Y * 12985072);
+      hashCode = hashCode * -1521134295 + gridPosition.GetHashCode();
+      return hashCode;
+    }
+  }
+
+  internal class Grid
+  {
+    private HashSet<Vertex> vertices;
+    private int size;
+    private char vertexChar = '*';
+    /// <summary>
+    /// Character used to print out vertices.
+    /// </summary>
+    internal char VertexChar
+    {
+      get => vertexChar;
+      set => vertexChar = value;
+    }
+    /// <summary>
+    /// Side length of the grid.
+    /// </summary>
+    internal int Size => size;
+    /// <summary>
+    /// List of grid vertices.
+    /// </summary>
+    internal IReadOnlyList<Vertex> Vertices => vertices.ToList();
+    internal Grid ()
+    {
+      vertices = new HashSet<Vertex>();
+      size = 0;
+    }
+    internal Grid(int size)
+    {
+      vertices = new HashSet<Vertex>();
+      InitGrid(size);
+    }
+    /// <summary>
+    /// Initializes new zero-edged grid of given side length.
+    /// </summary>
+    /// <param name="size">Side length.</param>
+    internal void InitGrid(int size)
+    {
+      vertices.Clear();
+      for (int j = 0; j < size; j++)
+        for (int i = 0; i < size; i++)
+          vertices.Add(new Vertex(i, j));
+      this.size = size;
+    }
+    /// <summary>
+    /// Adds an edge to the grid connecting specified vertices.
+    /// </summary>
+    /// <param name="x1">X coordinate of the first vertex.</param>
+    /// <param name="y1">Y coordinate of the first vertex.</param>
+    /// <param name="x2">X coordinate of the second vertex.</param>
+    /// <param name="y2">Y coordinate of the second vertex.</param>
+    /// <returns>True, if successfully added, otherwise false.</returns>
+    internal bool AddEdge(int x1, int y1, int x2, int y2)
+    {
+      Vertex u = vertices.First<Vertex>(t => x1 == t.GridPosition.X && y1 == t.GridPosition.Y);
+      Vertex v = vertices.First<Vertex>(t => x2 == t.GridPosition.X && y2 == t.GridPosition.Y);
+
+      // Vertex does not exist
+      if (u == null || v == null)
+        return false;
+
+      // Edge is already present in the grid
+      if (u.Neighbors.Contains(v) || v.Neighbors.Contains(u))
+        return false;
+
+      return u.AddNeighbor(v) && v.AddNeighbor(u);
+    }
+    public override string ToString ()
+    {
+      StringBuilder output = new StringBuilder();
+      int rowCount = 0;
+      int columnCount = 0;
+
+      // Insert vertices
+      bool insertSpace = false;
+      foreach (var vertex in vertices)
+      {
+        rowCount++;
+        insertSpace = true;
+
+        // Vertex char
+        output.Append("*");
+
+        // Row vertex count overflow
+        if (rowCount >= size)
+        {
+          rowCount = 0;
+          columnCount++;
+
+          // End of grid
+          if (columnCount < size)
+          {
+            output.Append("\n");
+            output.Append(' ', 2 * size - 1);
+            output.Append("\n");
+          }
+
+          insertSpace = false;
+        }
+
+        // Insert space between vertices
+        if (insertSpace)
+          output.Append(' ');
+      }
+
+
+      // Insert edges
+      foreach (var vertex in vertices)
+      {
+        foreach (var neighbor in vertex.Neighbors)
+        {
+          Vector2 neighborPosition = neighbor.GridPosition - vertex.GridPosition;
+          int x = (int)vertex.GridPosition.X;
+          int y = (int)vertex.GridPosition.Y;
+
+          char vertEdge = '|';
+          char horEdge = '-';
+
+          int edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y;
+          char edge = ' ';
+          if (neighborPosition.X == 1)
+          {
+            edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y + 1;
+            edge = horEdge;
+          }
+          else if (neighborPosition.X == -1)
+          {
+            edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y - 1;
+            edge = horEdge;
+          }
+          else if (neighborPosition.Y == 1)
+          {
+            edgeIndex = 2 * x + (2 * y + 1) * (2 * size - 1) + 2 * y + 1;
+            edge = vertEdge;
+          }
+          else if (neighborPosition.Y == -1)
+          {
+            edgeIndex = 2 * x + (2 * y - 1) * (2 * size - 1) + 2 * y - 1;
+            edge = vertEdge;
+          }
+
+          output[edgeIndex] = edge;
+        }
+      }
+
+      return output.ToString();
+    }
+  }
+
   class Program
   {
     /// <summary>
@@ -247,7 +470,19 @@ namespace _098svg
     {
       wasGenerated = true;
 
-      // !!!{{ TODO - generate and draw maze in SVG format
+      // Init graph
+      Grid maze = new Grid(3);
+      maze.AddEdge(1, 1, 2, 1);
+      maze.AddEdge(0, 0, 0, 1);
+      Console.WriteLine(maze.ToString());
+
+      ////////////////////////
+      /* Randomized Kruskal */
+      ////////////////////////
+
+      ////////////////////////////
+      /* End Randomized Kruskal */
+      ////////////////////////////
 
       string fileName = CmdOptions.options.outputFileName;
       if ( string.IsNullOrEmpty( fileName ) )
@@ -283,8 +518,6 @@ namespace _098svg
         drawCurve( wri, workList, 0, 0, string.Format( "#{0:X2}{0:X2}{0:X2}", 0 ) );
 
         wri.WriteLine( "</svg>" );
-
-        // !!!}}
       }
     }
   }
