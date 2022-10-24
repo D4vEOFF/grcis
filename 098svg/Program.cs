@@ -274,16 +274,35 @@ namespace _098svg
 
   internal class Grid
   {
+    private char vertexCharacter;
+    private char horizontalEdgeCharacter;
+    private char verticalEdgeCharacter;
+
     private HashSet<Vertex> vertices;
     private int size;
-    private char vertexChar = '*';
+    /// <summary>
+    /// Character used to print out vertically placed edges.
+    /// </summary>
+    internal char VerticalEdgeCharacter
+    {
+      get => verticalEdgeCharacter;
+      set => verticalEdgeCharacter = value;
+    }
+    /// <summary>
+    /// Character used to print out horizontally placed edges.
+    /// </summary>
+    internal char HorizontalEdgeCharacter
+    {
+      get => horizontalEdgeCharacter;
+      set => horizontalEdgeCharacter = value;
+    }
     /// <summary>
     /// Character used to print out vertices.
     /// </summary>
     internal char VertexChar
     {
-      get => vertexChar;
-      set => vertexChar = value;
+      get => vertexCharacter;
+      set => vertexCharacter = value;
     }
     /// <summary>
     /// Side length of the grid.
@@ -298,8 +317,12 @@ namespace _098svg
       vertices = new HashSet<Vertex>();
       size = 0;
     }
-    internal Grid(int size)
+    internal Grid(int size, char vertexCharacter = '*', char horizontalEdgeCharacter = '-', char verticalEdgeCharacter = '|')
     {
+      this.vertexCharacter = vertexCharacter;
+      this.horizontalEdgeCharacter = horizontalEdgeCharacter;
+      this.verticalEdgeCharacter = verticalEdgeCharacter;
+
       vertices = new HashSet<Vertex>();
       InitGrid(size);
     }
@@ -352,7 +375,7 @@ namespace _098svg
         insertSpace = true;
 
         // Vertex char
-        output.Append("*");
+        output.Append(vertexCharacter);
 
         // Row vertex count overflow
         if (rowCount >= size)
@@ -386,30 +409,28 @@ namespace _098svg
           int x = (int)vertex.GridPosition.X;
           int y = (int)vertex.GridPosition.Y;
 
-          char vertEdge = '|';
-          char horEdge = '-';
 
           int edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y;
           char edge = ' ';
           if (neighborPosition.X == 1)
           {
             edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y + 1;
-            edge = horEdge;
+            edge = horizontalEdgeCharacter;
           }
           else if (neighborPosition.X == -1)
           {
             edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y - 1;
-            edge = horEdge;
+            edge = horizontalEdgeCharacter;
           }
           else if (neighborPosition.Y == 1)
           {
             edgeIndex = 2 * x + (2 * y + 1) * (2 * size - 1) + 2 * y + 1;
-            edge = vertEdge;
+            edge = verticalEdgeCharacter;
           }
           else if (neighborPosition.Y == -1)
           {
             edgeIndex = 2 * x + (2 * y - 1) * (2 * size - 1) + 2 * y - 1;
-            edge = vertEdge;
+            edge = verticalEdgeCharacter;
           }
 
           output[edgeIndex] = edge;
@@ -474,6 +495,7 @@ namespace _098svg
       Grid maze = new Grid(3);
       maze.AddEdge(1, 1, 2, 1);
       maze.AddEdge(0, 0, 0, 1);
+      maze.AddEdge(1, 0, 1, 1);
       Console.WriteLine(maze.ToString());
 
       ////////////////////////
