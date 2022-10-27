@@ -200,24 +200,39 @@ namespace _098svg
     }
   }
 
-  internal class Vertex : IEquatable<Vertex>
+  enum Direction
+  {
+    Up,
+    Down,
+    Left,
+    Right
+  }
+
+  interface IReadOnlyVertex
+  {
+    Vector2 GridPosition { get; }
+    IReadOnlyList<IReadOnlyVertex> Neighbors { get; }
+    bool HasNeighbor (Direction direction);
+  }
+
+  class Vertex : IEquatable<Vertex>, IReadOnlyVertex
   {
     private HashSet<Vertex> neighbors;
     private Vector2 gridPosition;
     /// <summary>
     /// Neighbor list of the vertex.
     /// </summary>
-    internal IReadOnlyList<Vertex> Neighbors => neighbors.ToList();
+    public IReadOnlyList<IReadOnlyVertex> Neighbors => neighbors.ToList();
     /// <summary>
     /// Vertex position in the grid.
     /// </summary>
-    internal Vector2 GridPosition => gridPosition;
+    public Vector2 GridPosition => gridPosition;
     /// <summary>
     /// Creates a new vertex instance.
     /// </summary>
     /// <param name="gridPosition">Vertex position in the grid.</param>
     /// <param name="neighbors">List of vertices the vertex is connected to.</param>
-    internal Vertex (int x, int y, params Vertex[] neighbors)
+    public Vertex (int x, int y, params Vertex[] neighbors)
     {
       this.gridPosition = new Vector2(x, y);
       this.neighbors = new HashSet<Vertex>(neighbors);
@@ -227,13 +242,46 @@ namespace _098svg
     /// </summary>
     /// <param name="neighbor">Vertex to become a new neighbor.</param>
     /// <returns>True, if vertex not already a neighbor, otherwise false.</returns>
-    internal bool AddNeighbor(Vertex neighbor)
+    public bool AddNeighbor (Vertex neighbor)
     {
       if (neighbors.Contains(neighbor))
         return false;
       neighbors.Add(neighbor);
       return true;
     }
+    /// <summary>
+    /// Checks if a neighbor at a given position exists.
+    /// </summary>
+    /// <param name="direction"></param>
+    /// <returns></returns>
+    public bool HasNeighbor (Direction direction)
+    {
+      Vector2 posToCheck;
+      Vector2 gridDirection = new Vector2();
+      switch (direction)
+      {
+        case Direction.Up:
+          gridDirection.X = 0;
+          gridDirection.Y = -1;
+          break;
+        case Direction.Down:
+          gridDirection.X = 0;
+          gridDirection.Y = 1;
+          break;
+        case Direction.Left:
+          gridDirection.X = -1;
+          gridDirection.Y = 0;
+          break;
+        case Direction.Right:
+          gridDirection.X = 1;
+          gridDirection.Y = 0;
+          break;
+      }
+      Vector2.Add(ref gridPosition, ref gridDirection, out posToCheck);
+
+      return !(neighbors.FirstOrDefault(n => n.GridPosition == posToCheck) is null);
+    }
+
     public override string ToString ()
     {
       List<string> neighborPositions = new List<string>();
@@ -272,18 +320,33 @@ namespace _098svg
     }
   }
 
-  internal class Grid
+  class Grid
   {
     private char vertexCharacter;
     private char horizontalEdgeCharacter;
     private char verticalEdgeCharacter;
+    private char emptySpaceCharacter;
+    private char borderCharacter;
 
     private HashSet<Vertex> vertices;
-    private int size;
+    private int width;
+    private int heigth;
+    /// <summary>
+    /// Character used to print out the grid border.
+    /// </summary>
+    public char BorderCharacter => borderCharacter;
+    /// <summary>
+    /// Character used to print out a empty space in the grid.
+    /// </summary>
+    public char EmptySpaceCharacter
+    {
+      get => emptySpaceCharacter;
+      set => emptySpaceCharacter = value;
+    }
     /// <summary>
     /// Character used to print out vertically placed edges.
     /// </summary>
-    internal char VerticalEdgeCharacter
+    public char VerticalEdgeCharacter
     {
       get => verticalEdgeCharacter;
       set => verticalEdgeCharacter = value;
@@ -291,7 +354,7 @@ namespace _098svg
     /// <summary>
     /// Character used to print out horizontally placed edges.
     /// </summary>
-    internal char HorizontalEdgeCharacter
+    public char HorizontalEdgeCharacter
     {
       get => horizontalEdgeCharacter;
       set => horizontalEdgeCharacter = value;
@@ -299,44 +362,46 @@ namespace _098svg
     /// <summary>
     /// Character used to print out vertices.
     /// </summary>
-    internal char VertexChar
+    public char VertexChar
     {
       get => vertexCharacter;
       set => vertexCharacter = value;
     }
     /// <summary>
-    /// Side length of the grid.
+    /// Width of the grid.
     /// </summary>
-    internal int Size => size;
+    public int Width => width;
+    /// <summary>
+    /// Heigth of the grid.
+    /// </summary>
+    public int Heigth => heigth;
     /// <summary>
     /// List of grid vertices.
     /// </summary>
-    internal IReadOnlyList<Vertex> Vertices => vertices.ToList();
-    internal Grid ()
+    public IReadOnlyList<IReadOnlyVertex> Vertices => vertices.ToList();
+    public Grid(int width, int height, char vertexCharacter = ' ', char horizontalEdgeCharacter = ' ', char verticalEdgeCharacter = ' ', char emptySpaceCharacter = '█', char borderCharacter = '█')
     {
-      vertices = new HashSet<Vertex>();
-      size = 0;
-    }
-    internal Grid(int size, char vertexCharacter = '*', char horizontalEdgeCharacter = '-', char verticalEdgeCharacter = '|')
-    {
+      this.borderCharacter = borderCharacter;
+      this.emptySpaceCharacter = emptySpaceCharacter;
       this.vertexCharacter = vertexCharacter;
       this.horizontalEdgeCharacter = horizontalEdgeCharacter;
       this.verticalEdgeCharacter = verticalEdgeCharacter;
 
       vertices = new HashSet<Vertex>();
-      InitGrid(size);
+      CreateNewGrid(width, height);
     }
     /// <summary>
-    /// Initializes new zero-edged grid of given side length.
+    /// Initializes new no-edged grid of given dimensions.
     /// </summary>
     /// <param name="size">Side length.</param>
-    internal void InitGrid(int size)
+    public void CreateNewGrid(int width, int heigth)
     {
       vertices.Clear();
-      for (int j = 0; j < size; j++)
-        for (int i = 0; i < size; i++)
-          vertices.Add(new Vertex(i, j));
-      this.size = size;
+      for (int x = 0; x < width; x++)
+        for (int y = 0; y < heigth; y++)
+          vertices.Add(new Vertex(x, y));
+      this.width = width;
+      this.heigth = heigth;
     }
     /// <summary>
     /// Adds an edge to the grid connecting specified vertices.
@@ -346,10 +411,10 @@ namespace _098svg
     /// <param name="x2">X coordinate of the second vertex.</param>
     /// <param name="y2">Y coordinate of the second vertex.</param>
     /// <returns>True, if successfully added, otherwise false.</returns>
-    internal bool AddEdge(int x1, int y1, int x2, int y2)
+    public bool AddEdge(int x1, int y1, int x2, int y2)
     {
-      Vertex u = vertices.First<Vertex>(t => x1 == t.GridPosition.X && y1 == t.GridPosition.Y);
-      Vertex v = vertices.First<Vertex>(t => x2 == t.GridPosition.X && y2 == t.GridPosition.Y);
+      Vertex u = vertices.First(t => x1 == t.GridPosition.X && y1 == t.GridPosition.Y);
+      Vertex v = vertices.First(t => x2 == t.GridPosition.X && y2 == t.GridPosition.Y);
 
       // Vertex does not exist
       if (u == null || v == null)
@@ -364,77 +429,35 @@ namespace _098svg
     public override string ToString ()
     {
       StringBuilder output = new StringBuilder();
-      int rowCount = 0;
-      int columnCount = 0;
 
-      // Insert vertices
-      bool insertSpace = false;
-      foreach (var vertex in vertices)
+      // Init output with border
+      int resWidth = 2 * width + 1;
+      int resHeigth = 2 * heigth + 1;
+      for (int y = 1; y <= resHeigth; y++)
       {
-        rowCount++;
-        insertSpace = true;
-
-        // Vertex char
-        output.Append(vertexCharacter);
-
-        // Row vertex count overflow
-        if (rowCount >= size)
+        if (y == 1 || y == resHeigth)
+          output.Append(borderCharacter, resWidth);
+        else
         {
-          rowCount = 0;
-          columnCount++;
-
-          // End of grid
-          if (columnCount < size)
-          {
-            output.Append("\n");
-            output.Append(' ', 2 * size - 1);
-            output.Append("\n");
-          }
-
-          insertSpace = false;
+          output.Append(borderCharacter);
+          output.Append(emptySpaceCharacter, resWidth - 2);
+          output.Append(borderCharacter);
         }
-
-        // Insert space between vertices
-        if (insertSpace)
-          output.Append(' ');
+        if (y != resHeigth)
+          output.Append('\n');
       }
 
-
-      // Insert edges
+      // Put vertices and edges
       foreach (var vertex in vertices)
       {
-        foreach (var neighbor in vertex.Neighbors)
-        {
-          Vector2 neighborPosition = neighbor.GridPosition - vertex.GridPosition;
-          int x = (int)vertex.GridPosition.X;
-          int y = (int)vertex.GridPosition.Y;
+        int index = (int)(2 * vertex.GridPosition.X + 1 + (2 * vertex.GridPosition.Y + 1) * (resWidth + 1));
+        output[index] = vertexCharacter;
 
-
-          int edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y;
-          char edge = ' ';
-          if (neighborPosition.X == 1)
-          {
-            edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y + 1;
-            edge = horizontalEdgeCharacter;
-          }
-          else if (neighborPosition.X == -1)
-          {
-            edgeIndex = 2 * x + 2 * y * (2 * size - 1) + 2 * y - 1;
-            edge = horizontalEdgeCharacter;
-          }
-          else if (neighborPosition.Y == 1)
-          {
-            edgeIndex = 2 * x + (2 * y + 1) * (2 * size - 1) + 2 * y + 1;
-            edge = verticalEdgeCharacter;
-          }
-          else if (neighborPosition.Y == -1)
-          {
-            edgeIndex = 2 * x + (2 * y - 1) * (2 * size - 1) + 2 * y - 1;
-            edge = verticalEdgeCharacter;
-          }
-
-          output[edgeIndex] = edge;
-        }
+        // Print walls around vertex
+        output[index - resWidth - 1] = vertex.HasNeighbor(Direction.Up) ? verticalEdgeCharacter : emptySpaceCharacter;
+        output[index + resWidth + 1] = vertex.HasNeighbor(Direction.Down) ? verticalEdgeCharacter : emptySpaceCharacter;
+        output[index - 1] = vertex.HasNeighbor(Direction.Left) ? horizontalEdgeCharacter : emptySpaceCharacter;
+        output[index + 1] = vertex.HasNeighbor(Direction.Right) ? horizontalEdgeCharacter : emptySpaceCharacter;
       }
 
       return output.ToString();
@@ -492,11 +515,11 @@ namespace _098svg
       wasGenerated = true;
 
       // Init graph
-      Grid maze = new Grid(3);
-      maze.AddEdge(1, 1, 2, 1);
-      maze.AddEdge(0, 0, 0, 1);
-      maze.AddEdge(1, 0, 1, 1);
-      Console.WriteLine(maze.ToString());
+      Grid maze1 = new Grid(3, 3);
+      maze1.AddEdge(1, 1, 2, 1);
+      maze1.AddEdge(0, 0, 0, 1);
+      maze1.AddEdge(1, 0, 1, 1);
+      Console.WriteLine(maze1.ToString());
 
       ////////////////////////
       /* Randomized Kruskal */
