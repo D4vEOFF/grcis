@@ -4,6 +4,7 @@
 # 098svg -c config.txt
 
 html   = 1
+seed   = 0
 
 output = out.html
 generate

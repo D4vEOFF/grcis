@@ -4,10 +4,12 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Remoting.Metadata;
 using System.Text;
 using System.Threading;
 using MathSupport;
 using OpenTK;
+using OpenTK.Input;
 using Utilities;
 
 namespace _098svg
@@ -322,6 +324,86 @@ namespace _098svg
     }
   }
 
+  class UnionFind
+  {
+    private Dictionary<Vertex, uint> Depth;
+    private Dictionary<Vertex, Vertex> Predecessor;
+    public UnionFind (List<Vertex> vertices) : this(vertices.AsReadOnly()) { }
+    public UnionFind (IReadOnlyList<Vertex> vertices)
+    {
+      Depth = new Dictionary<Vertex, uint>();
+      Predecessor = new Dictionary<Vertex, Vertex>();
+      foreach (var vertex in vertices)
+      {
+        Depth[vertex] = 0;
+        Predecessor[vertex] = null;
+      }
+    }
+    /// <summary>
+    /// Return the root of a vertex.
+    /// </summary>
+    /// <param name="x">Vertex.</param>
+    /// <returns>Root of input vertex.</returns>
+    public Vertex Root (Vertex x)
+    {
+      while (!(Predecessor[x] is null))
+        x = Predecessor[x];
+      return x;
+    }
+    /// <summary>
+    /// Determines whether given vertices belong to the same brush.
+    /// </summary>
+    /// <param name="u">First vertex.</param>
+    /// <param name="v">Second vertex.</param>
+    /// <returns>True, if given vertices belong to the same brush, otherwise false.</returns>
+    public bool Find(Vertex u, Vertex v)
+    {
+      return Root(u) == Root(v);
+    }
+    /// <summary>
+    /// Merges brushes of given vertices.
+    /// </summary>
+    /// <param name="u"></param>
+    /// <param name="v"></param>
+    public void Union(Vertex u, Vertex v)
+    {
+      Vertex a = Root(u);
+      Vertex b = Root(v);
+
+      // Vertices are already in the same brush.
+      if (a == b)
+        return;
+
+      if (Depth[a] < Depth[b])
+        Predecessor[a] = b;
+      else if (Depth[a] > Depth[b])
+        Predecessor[b] = a;
+      else
+      {
+        Predecessor[b] = a;
+        Depth[a] += 1;
+      }
+    }
+  }
+
+  internal sealed class EdgeEqualityComparer : IEqualityComparer<Tuple<Vertex, Vertex>>
+  {
+    public bool Equals (Tuple<Vertex, Vertex> x, Tuple<Vertex, Vertex> y)
+    {
+      if (ReferenceEquals(x, y))
+        return true;
+      if (x is null || y is null)
+        return false;
+
+      return (x.Item1 == y.Item1 && x.Item2 == y.Item2) || (x.Item1 == y.Item2 && x.Item2 == y.Item1);
+    }
+
+    public int GetHashCode (Tuple<Vertex, Vertex> obj)
+    {
+      return obj.Item1.GetHashCode() * obj.Item2.GetHashCode();
+    }
+  }
+
   class Grid
   {
     private HashSet<Vertex> vertices;
@@ -329,7 +411,7 @@ namespace _098svg
     /// <summary>
     /// Character used to print out the grid border.
     /// </summary>
-    public char BorderCharacter { get; }
+    public char BorderCharacter { get; set; }
     /// <summary>
     /// Character used to print out a empty space in the grid.
     /// </summary>
@@ -360,11 +442,11 @@ namespace _098svg
     public IReadOnlyList<IReadOnlyVertex> Vertices => vertices.ToList();
     public Grid(int width, int height, char vertexCharacter = ' ', char horizontalEdgeCharacter = ' ', char verticalEdgeCharacter = ' ', char emptySpaceCharacter = '█', char borderCharacter = '█')
     {
-      this.BorderCharacter = borderCharacter;
-      this.EmptySpaceCharacter = emptySpaceCharacter;
-      this.VertexCharacter = vertexCharacter;
-      this.HorizontalEdgeCharacter = horizontalEdgeCharacter;
-      this.VerticalEdgeCharacter = verticalEdgeCharacter;
+      BorderCharacter = borderCharacter;
+      EmptySpaceCharacter = emptySpaceCharacter;
+      VertexCharacter = vertexCharacter;
+      HorizontalEdgeCharacter = horizontalEdgeCharacter;
+      VerticalEdgeCharacter = verticalEdgeCharacter;
 
       vertices = new HashSet<Vertex>();
       CreateNewGrid(width, height);
@@ -372,15 +454,85 @@ namespace _098svg
     /// <summary>
     /// Initializes new no-edged grid of given dimensions.
     /// </summary>
-    /// <param name="size">Side length.</param>
+    /// <param name="width">Grid width.</param>
+    /// <param name="heigth">Grid height.</param>
     public void CreateNewGrid(int width, int heigth)
     {
       vertices.Clear();
       for (int x = 0; x < width; x++)
         for (int y = 0; y < heigth; y++)
           vertices.Add(new Vertex(x, y));
-      this.Width = width;
-      this.Heigth = heigth;
+      Width = width;
+      Heigth = heigth;
+    }
+    private Vertex GetVertex(int x, int y)
+    {
+      return vertices.FirstOrDefault(t => t.GridPosition == new Vector2(x, y));
+    }
+    private List<Tuple<Vertex, Vertex>> GetAllPossibleEdges ()
+    {
+      HashSet<Tuple<Vertex, Vertex>> edges = new HashSet<Tuple<Vertex, Vertex>>(new EdgeEqualityComparer());
+      for (int x = 0; x < Width; x++)
+      {
+        for (int y = 0; y < Heigth; y++)
+        {
+          Vertex v = GetVertex(x, y);
+
+          // Adjacent vertices
+          Vertex up = GetVertex(x, y - 1);
+          Vertex down = GetVertex(x, y + 1);
+          Vertex left = GetVertex(x - 1, y);
+          Vertex right = GetVertex(x, y + 1);
+
+          // Add to the list of edges, if existent
+          if (!(up is null))
+            edges.Add(new Tuple<Vertex, Vertex>(v, up));
+          if (!(down is null))
+            edges.Add(new Tuple<Vertex, Vertex>(v, down));
+          if (!(left is null))
+            edges.Add(new Tuple<Vertex, Vertex>(v, left));
+          if (!(right is null))
+            edges.Add(new Tuple<Vertex, Vertex>(v, right));
+        }
+      }
+
+      return edges.ToList();
+    }
+    /// <summary>
+    /// Generates a maze using Kruskal's algorithm.
+    /// </summary>
+    public void GenerateKruskal ()
+    {
+      CreateNewGrid(Width, Heigth);
+
+      UnionFind unionFind = new UnionFind(vertices.ToList());
+      Random random;
+
+      // If seed 0, randomize
+      if (CmdOptions.options.seed == 0)
+        random = new Random();
+      else
+        random = new Random((int)CmdOptions.options.seed);
+
+      // Get all addable edges
+      List<Tuple<Vertex, Vertex>> unusedEdges = GetAllPossibleEdges();
+
+      // Apply Kruskal
+      while (unusedEdges.Count > 0)
+      {
+        int randIndex = random.Next(unusedEdges.Count);
+        Tuple<Vertex, Vertex> edge = unusedEdges[randIndex];
+        unusedEdges.RemoveAt(randIndex);
+
+        Vertex u = edge.Item1;
+        Vertex v = edge.Item2;
+
+        if (!unionFind.Find(u, v))
+        {
+          AddEdge((int)u.GridPosition.X, (int)u.GridPosition.Y, (int)v.GridPosition.X, (int)v.GridPosition.Y);
+          unionFind.Union(u, v);
+        }
+      }
     }
     /// <summary>
     /// Adds an edge to the grid connecting specified vertices.
@@ -405,6 +557,14 @@ namespace _098svg
 
       return u.AddNeighbor(v) && v.AddNeighbor(u);
     }
+    /// <summary>
+    /// Removes an edge from the grid connecting specified vertices.
+    /// </summary>
+    /// <param name="x1">X coordinate of the first vertex.</param>
+    /// <param name="y1">Y coordinate of the first vertex.</param>
+    /// <param name="x2">X coordinate of the second vertex.</param>
+    /// <param name="y2">Y coordinate of the second vertex.</param>
+    /// <returns>True, if successfully removed, otherwise false.</returns>
     public bool RemoveEdge(int x1, int y1, int x2, int y2)
     {
       Vertex u = vertices.First(t => x1 == t.GridPosition.X && y1 == t.GridPosition.Y);
@@ -509,14 +669,8 @@ namespace _098svg
       wasGenerated = true;
 
       // Init graph
-      Grid maze = new Grid(10, 3);
-      Console.WriteLine(maze.AddEdge(1, 1, 2, 1));
-      Console.WriteLine(maze.AddEdge(1, 1, 2, 1));
-      maze.AddEdge(0, 0, 0, 1);
-      maze.AddEdge(1, 0, 1, 1);
-      Console.WriteLine(maze.RemoveEdge(1, 1, 2, 1));
-      Console.WriteLine(maze.RemoveEdge(0, 0, 0, 1));
-      Console.WriteLine(maze.RemoveEdge(1, 0, 1, 1));
+      Grid maze = new Grid(20, 10);
+      maze.GenerateKruskal();
       Console.WriteLine(maze.ToString());
 
       ////////////////////////
