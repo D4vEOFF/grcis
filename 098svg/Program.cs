@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -97,6 +98,26 @@ namespace _098svg
     public bool html = false;
 
     /// <summary>
+    /// Start vertex X position.
+    /// </summary>
+    public int startX = 0;
+
+    /// <summary>
+    /// Start vertex Y position.
+    /// </summary>
+    public int startY = 0;
+
+    /// <summary>
+    /// Goal vertex X position.
+    /// </summary>
+    public int goalX = 0;
+
+    /// <summary>
+    /// Goal vertex Y position.
+    /// </summary>
+    public int goalY = 0;
+
+    /// <summary>
     /// Parse additional keys.
     /// </summary>
     /// <param name="key">Key string (non-empty, trimmed).</param>
@@ -113,6 +134,26 @@ namespace _098svg
 
       switch ( key )
       {
+        case "startX":
+          if (int.TryParse(value, out newInt) && newInt >= 0)
+            startX = newInt;
+          break;
+
+        case "startY":
+          if (int.TryParse(value, out newInt) && newInt >= 0)
+            startY = newInt;
+          break;
+
+        case "goalX":
+          if (int.TryParse(value, out newInt) && newInt >= 0)
+            goalX = newInt;
+          break;
+
+        case "goalY":
+          if (int.TryParse(value, out newInt) && newInt >= 0)
+            goalY = newInt;
+          break;
+
         case "outDir":
           outDir = value;
           break;
@@ -209,6 +250,14 @@ namespace _098svg
     Left,
     Right
   }
+  enum Difficulty
+  {
+    Peaceful,
+    Easy,
+    Normal,
+    Hard,
+    Hardest
+  }
 
   interface IReadOnlyVertex
   {
@@ -295,7 +344,8 @@ namespace _098svg
       List<string> neighborPositions = new List<string>();
       foreach (var neighbor in neighbors)
         neighborPositions.Add(neighbor.GridPosition.ToString());
-      return neighbors.Count == 0 ? gridPosition.ToString() : $"{gridPosition}: " + string.Join(", ", neighborPositions);
+      return neighbors.Count == 0 ? gridPosition.ToString() : $"{gridPosition}: "
+        + string.Join(", ", neighborPositions);
     }
     public static bool operator ==(Vertex u, Vertex v)
     {
@@ -363,8 +413,8 @@ namespace _098svg
     /// <summary>
     /// Merges brushes of given vertices.
     /// </summary>
-    /// <param name="u"></param>
-    /// <param name="v"></param>
+    /// <param name="u">First vertex.</param>
+    /// <param name="v">Second vertex.</param>
     public void Union(Vertex u, Vertex v)
     {
       Vertex a = Root(u);
@@ -395,7 +445,8 @@ namespace _098svg
       if (x is null || y is null)
         return false;
 
-      return (x.Item1 == y.Item1 && x.Item2 == y.Item2) || (x.Item1 == y.Item2 && x.Item2 == y.Item1);
+      return (x.Item1 == y.Item1 && x.Item2 == y.Item2) ||
+        (x.Item1 == y.Item2 && x.Item2 == y.Item1);
     }
 
     public int GetHashCode (Tuple<Vertex, Vertex> obj)
@@ -407,7 +458,14 @@ namespace _098svg
   class Grid
   {
     private HashSet<Vertex> vertices;
-
+    /// <summary>
+    /// Character used to print out the start vertex.
+    /// </summary>
+    public char StartVertexCharacter { get; set; }
+    /// <summary>
+    /// Character used to print out the goal vertex.
+    /// </summary>
+    public char GoalVertexCharacter { get; set; }
     /// <summary>
     /// Character used to print out the grid border.
     /// </summary>
@@ -429,6 +487,18 @@ namespace _098svg
     /// </summary>
     public char VertexCharacter { get; set; }
     /// <summary>
+    /// Difficulty of the generated maze ('Normal' by default).
+    /// </summary>
+    public Difficulty Difficulty { set; get; }
+    /// <summary>
+    /// Start vertex in the grid (null by default).
+    /// </summary>
+    public Vertex StartVertex { get; private set; }
+    /// <summary>
+    /// Goal vertex in the grid (null by default).
+    /// </summary>
+    public Vertex GoalVertex { get; private set; }
+    /// <summary>
     /// Width of the grid.
     /// </summary>
     public int Width { get; private set; }
@@ -440,30 +510,42 @@ namespace _098svg
     /// List of grid vertices.
     /// </summary>
     public IReadOnlyList<IReadOnlyVertex> Vertices => vertices.ToList();
-    public Grid(int width, int height, char vertexCharacter = ' ', char horizontalEdgeCharacter = ' ', char verticalEdgeCharacter = ' ', char emptySpaceCharacter = '█', char borderCharacter = '█')
+    public Grid(int width, int height)
     {
-      BorderCharacter = borderCharacter;
-      EmptySpaceCharacter = emptySpaceCharacter;
-      VertexCharacter = vertexCharacter;
-      HorizontalEdgeCharacter = horizontalEdgeCharacter;
-      VerticalEdgeCharacter = verticalEdgeCharacter;
+      // Drawing
+      VertexCharacter = '░';
+      HorizontalEdgeCharacter = '░';
+      VerticalEdgeCharacter = '░';
+      EmptySpaceCharacter = '█';
+      BorderCharacter = '█';
+
+      StartVertexCharacter = 'S';
+      GoalVertexCharacter = 'G';
+
+      // Maze settings
+      Width = width;
+      Heigth = height;
 
       vertices = new HashSet<Vertex>();
-      CreateNewGrid(width, height);
+
+      StartVertex = null;
+      GoalVertex = null;
+
+      Difficulty = Difficulty.Normal;
+
+      CreateNewGrid();
     }
     /// <summary>
     /// Initializes new no-edged grid of given dimensions.
     /// </summary>
     /// <param name="width">Grid width.</param>
     /// <param name="heigth">Grid height.</param>
-    public void CreateNewGrid(int width, int heigth)
+    public void CreateNewGrid()
     {
       vertices.Clear();
-      for (int x = 0; x < width; x++)
-        for (int y = 0; y < heigth; y++)
+      for (int x = 0; x < Width; x++)
+        for (int y = 0; y < Heigth; y++)
           vertices.Add(new Vertex(x, y));
-      Width = width;
-      Heigth = heigth;
     }
     private Vertex GetVertex(int x, int y)
     {
@@ -499,20 +581,55 @@ namespace _098svg
       return edges.ToList();
     }
     /// <summary>
+    /// Sets goal vertex to null.
+    /// </summary>
+    public void UnsetGoalVertex ()
+    {
+      GoalVertex = null;
+    }
+    /// <summary>
+    /// Sets start vertex to null.
+    /// </summary>
+    public void UnsetStartVertex ()
+    {
+      StartVertex = null;
+    }
+    /// <summary>
+    /// Set vertex at given position as goal.
+    /// </summary>
+    /// <param name="x">X coordinate.</param>
+    /// <param name="y">Y coordinate.</param>
+    public void SetGoalVertex(int x, int y)
+    {
+      if (x >= Width || y >= Heigth || x < 0 || y < 0)
+        throw new ArgumentOutOfRangeException("Start or goal vertex position out of range.");
+      GoalVertex = GetVertex(x, y);
+    }
+    /// <summary>
+    /// Set vertex at given position as start.
+    /// </summary>
+    /// <param name="x">X coordinate.</param>
+    /// <param name="y">Y coordinate.</param>
+    public void SetStartVertex(int x, int y)
+    {
+      if (x >= Width || y >= Heigth || x < 0 || y < 0)
+        throw new ArgumentOutOfRangeException("Start or goal vertex position out of range.");
+      StartVertex = GetVertex(x, y);
+    }
+    /// <summary>
     /// Generates a maze using Kruskal's algorithm.
     /// </summary>
-    public void GenerateKruskal ()
+    public void GenerateKruskal (long seed = 0)
     {
-      CreateNewGrid(Width, Heigth);
+      CreateNewGrid();
 
       UnionFind unionFind = new UnionFind(vertices.ToList());
-      Random random;
+      RandomJames random;
 
       // If seed 0, randomize
-      if (CmdOptions.options.seed == 0)
-        random = new Random();
-      else
-        random = new Random((int)CmdOptions.options.seed);
+      random = new RandomJames(seed);
+      if (seed == 0)
+        random.Randomize();
 
       // Get all addable edges
       List<Tuple<Vertex, Vertex>> unusedEdges = GetAllPossibleEdges();
@@ -520,7 +637,7 @@ namespace _098svg
       // Apply Kruskal
       while (unusedEdges.Count > 0)
       {
-        int randIndex = random.Next(unusedEdges.Count);
+        int randIndex = random.RandomInteger(0, unusedEdges.Count - 1);
         Tuple<Vertex, Vertex> edge = unusedEdges[randIndex];
         unusedEdges.RemoveAt(randIndex);
 
@@ -531,6 +648,60 @@ namespace _098svg
         {
           AddEdge((int)u.GridPosition.X, (int)u.GridPosition.Y, (int)v.GridPosition.X, (int)v.GridPosition.Y);
           unionFind.Union(u, v);
+        }
+      }
+    }
+    /// <summary>
+    /// Applies the set difficulty upon the generated maze.
+    /// </summary>
+    public void ApplyDifficulty ()
+    {
+      float[] chances = new float[] { .3f, .5f, .7f, .9f, 1.1f };
+      float breakChance = chances[(int)Difficulty];
+
+      RandomJames random = new RandomJames();
+      random.Randomize();
+      
+      foreach (var vertex in vertices)
+      {
+        // There's a wall in given direction and the vertex is not on the border.
+        float randomNumber;
+        Vector2 vertexPos = vertex.GridPosition;
+        if (!vertex.HasNeighbor(Direction.Up) && vertexPos.Y > 0)
+        {
+          randomNumber = random.RandomFloat(0, 1);
+          if (randomNumber >= breakChance)
+          {
+            AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X, (int)vertexPos.Y - 1);
+            continue;
+          }
+        }
+        if (!vertex.HasNeighbor(Direction.Down) && vertexPos.Y < Heigth - 1)
+        {
+          randomNumber = random.RandomFloat(0, 1);
+          if (randomNumber >= breakChance)
+          {
+            AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X, (int)vertexPos.Y + 1);
+            continue;
+          }
+        }
+        if (!vertex.HasNeighbor(Direction.Left) && vertexPos.X > 0)
+        {
+          randomNumber = random.RandomFloat(0, 1);
+          if (randomNumber >= breakChance)
+          {
+            AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X - 1, (int)vertexPos.Y);
+            continue;
+          }   
+        }
+        if (!vertex.HasNeighbor(Direction.Right) && vertexPos.X < Width - 1)
+        {
+          randomNumber = random.RandomFloat(0, 1);
+          if (randomNumber >= breakChance)
+          {
+            AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X + 1, (int)vertexPos.Y);
+            continue;
+          }
         }
       }
     }
@@ -605,7 +776,12 @@ namespace _098svg
       foreach (var vertex in vertices)
       {
         int index = (int)(2 * vertex.GridPosition.X + 1 + (2 * vertex.GridPosition.Y + 1) * (resWidth + 1));
-        output[index] = VertexCharacter;
+        if (vertex == StartVertex)
+          output[index] = StartVertexCharacter;
+        else if (vertex == GoalVertex)
+          output[index] = GoalVertexCharacter;
+        else
+          output[index] = VertexCharacter;
 
         // Print walls around vertex
         output[index - resWidth - 1] = vertex.HasNeighbor(Direction.Up) ? VerticalEdgeCharacter : EmptySpaceCharacter;
@@ -668,18 +844,15 @@ namespace _098svg
     {
       wasGenerated = true;
 
-      // Init graph
-      Grid maze = new Grid(20, 10);
-      maze.GenerateKruskal();
+      // Generate maze
+      Grid maze = new Grid(CmdOptions.options.columns, CmdOptions.options.rows);
+      maze.SetStartVertex(CmdOptions.options.startX, CmdOptions.options.startY);
+      maze.SetGoalVertex(CmdOptions.options.goalX, CmdOptions.options.goalY);
+      maze.GenerateKruskal(CmdOptions.options.seed);
+      maze.Difficulty = (Difficulty)CmdOptions.options.difficulty;
+      maze.ApplyDifficulty();
       Console.WriteLine(maze.ToString());
 
-      ////////////////////////
-      /* Randomized Kruskal */
-      ////////////////////////
-
-      ////////////////////////////
-      /* End Randomized Kruskal */
-      ////////////////////////////
 
       string fileName = CmdOptions.options.outputFileName;
       if ( string.IsNullOrEmpty( fileName ) )

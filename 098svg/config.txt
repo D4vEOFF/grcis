@@ -3,8 +3,17 @@
 # run 098svg.exe application with command-line:
 # 098svg -c config.txt
 
-html   = 1
-seed   = 0
+html   		= 1
+seed   		= 0
 
-output = out.html
+rows   		= 10
+columns		= 30
+difficulty	= 4
+
+startX 		= 0
+startY 		= 0
+goalX  		= 29
+goalY  		= 9
+
+output 		= out.html
 generate
