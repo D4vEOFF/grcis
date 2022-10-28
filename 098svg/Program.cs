@@ -117,6 +117,8 @@ namespace _098svg
     /// </summary>
     public int goalY = 0;
 
+    public int strokeWidth = 0;
+
     /// <summary>
     /// Parse additional keys.
     /// </summary>
@@ -134,6 +136,11 @@ namespace _098svg
 
       switch ( key )
       {
+        case "strokeWidth":
+          if (int.TryParse(value, out newInt) && newInt >= 0)
+            strokeWidth = newInt;
+          break;
+
         case "startX":
           if (int.TryParse(value, out newInt) && newInt >= 0)
             startX = newInt;
@@ -837,7 +844,8 @@ namespace _098svg
         sb.AppendFormat( CultureInfo.InvariantCulture, "L{0:f2},{1:f2}",
                          workList[ i ].X - x0, workList[ i ].Y - y0 );
 
-      wri.WriteLine( "<path d=\"{0}\" stroke=\"{1}\" fill=\"none\"/>", sb.ToString(), color );
+      wri.WriteLine("<path d=\"{0}\" stroke=\"{1}\" stroke-width=\"{2}\" fill=\"none\" stroke-linejoin=\"round\"" +
+        "stroke-linecap=\"round\"/>", sb.ToString(), color, CmdOptions.options.strokeWidth);
     }
 
     static public void Generate ()
@@ -853,41 +861,83 @@ namespace _098svg
       maze.ApplyDifficulty();
       Console.WriteLine(maze.ToString());
 
-
+      GenerateSVG(maze, 0, 0);
+    }
+    static void GenerateSVG(Grid maze, int originX, int originY)
+    {
       string fileName = CmdOptions.options.outputFileName;
-      if ( string.IsNullOrEmpty( fileName ) )
+      if (string.IsNullOrEmpty(fileName))
         fileName = CmdOptions.options.html ? "out.html" : "out.svg";
       string outFn = Path.Combine( CmdOptions.options.outDir, fileName );
 
       // SVG output:
-      using ( StreamWriter wri = new StreamWriter( outFn ) )
+      using (StreamWriter wri = new StreamWriter(outFn))
       {
-        if ( CmdOptions.options.html )
+        if (CmdOptions.options.html)
         {
-          wri.WriteLine( "<!DOCTYPE html>" );
-          wri.WriteLine( "<meta charset=\"utf-8\">" );
-          wri.WriteLine( $"<title>SVG test ({CmdOptions.options.name})</title>" );
-          wri.WriteLine( string.Format( CultureInfo.InvariantCulture, "<svg width=\"{0:f0}\" height=\"{1:f0}\">",
-                                        CmdOptions.options.width, CmdOptions.options.height ) );
+          wri.WriteLine("<!DOCTYPE html>");
+          wri.WriteLine("<meta charset=\"utf-8\">");
+          wri.WriteLine($"<title>SVG test ({CmdOptions.options.name})</title>");
+          wri.WriteLine(string.Format(CultureInfo.InvariantCulture, "<svg width=\"{0:f0}\" height=\"{1:f0}\">",
+                                        CmdOptions.options.width, CmdOptions.options.height));
         }
         else
-          wri.WriteLine( string.Format( CultureInfo.InvariantCulture, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{0:f0}\" height=\"{1:f0}\">",
-                                        CmdOptions.options.width, CmdOptions.options.height ) );
+          wri.WriteLine(string.Format(CultureInfo.InvariantCulture, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{0:f0}\" height=\"{1:f0}\">",
+                                        CmdOptions.options.width, CmdOptions.options.height));
 
         List<Vector2> workList = new List<Vector2>();
-        RandomJames rnd = new RandomJames();
-        if ( CmdOptions.options.seed > 0L )
-          rnd.Reset( CmdOptions.options.seed );
-        else
-          rnd.Randomize();
+        originX -= CmdOptions.options.strokeWidth;
+        originY -= CmdOptions.options.strokeWidth;
+        Vector2 squareDimensions = new Vector2((int)(CmdOptions.options.width - 2 * CmdOptions.options.strokeWidth) / CmdOptions.options.columns,
+          (int)(CmdOptions.options.height - 2 * CmdOptions.options.strokeWidth) / CmdOptions.options.rows);
+        IReadOnlyList<IReadOnlyVertex> vertices = maze.Vertices;
 
-        for ( int i = 0; i < CmdOptions.options.columns; i++ )
-          workList.Add( new Vector2( rnd.RandomFloat( 0.0f, (float)CmdOptions.options.width ),
-                                     rnd.RandomFloat( 0.0f, (float)CmdOptions.options.height ) ) );
+        Vector2 pos;
+        Vector2 begin = new Vector2();
+        Vector2 end = new Vector2();
+        Direction[] directions = new Direction[] { Direction.Up, Direction.Down, Direction.Left, Direction.Right };
+        foreach (var vertex in vertices)
+        {
+          pos = vertex.GridPosition;
 
-        drawCurve( wri, workList, 0, 0, string.Format( "#{0:X2}{0:X2}{0:X2}", 0 ) );
+          // Mark start and goal vertex (square)
+          if (pos == maze.StartVertex.GridPosition)
+            wri.WriteLine($"<rect x=\"{pos.X * squareDimensions.X - originX}\" y=\"{pos.Y * squareDimensions.Y - originY}\" " +
+              $"width=\"{squareDimensions.X}\" height=\"{squareDimensions.Y}\" stroke-width=\"{CmdOptions.options.strokeWidth}\" " +
+              $"fill=\"green\" />");
+          else if (pos == maze.GoalVertex.GridPosition)
+            wri.WriteLine($"<rect x=\"{pos.X * squareDimensions.X - originX}\" y=\"{pos.Y * squareDimensions.Y - originY}\" " +
+              $"width=\"{squareDimensions.X}\" height=\"{squareDimensions.Y}\" stroke-width=\"{CmdOptions.options.strokeWidth}\" " +
+              $"fill=\"red\" />");
 
-        wri.WriteLine( "</svg>" );
+          foreach (var direction in directions)
+          {
+            switch (direction)
+            {
+              case Direction.Up:
+                begin = new Vector2(pos.X * squareDimensions.X, pos.Y * squareDimensions.Y);
+                end = new Vector2((pos.X + 1) * squareDimensions.X, pos.Y * squareDimensions.Y);
+                break;
+              case Direction.Down:
+                begin = new Vector2(pos.X * squareDimensions.X, (pos.Y + 1) * squareDimensions.Y);
+                end = new Vector2((pos.X + 1) * squareDimensions.X, (pos.Y + 1) * squareDimensions.Y);
+                break;
+              case Direction.Left:
+                begin = new Vector2(pos.X * squareDimensions.X, pos.Y * squareDimensions.Y);
+                end = new Vector2(pos.X * squareDimensions.X, (pos.Y + 1) * squareDimensions.Y);
+                break;
+              case Direction.Right:
+                begin = new Vector2((pos.X + 1) * squareDimensions.X, pos.Y * squareDimensions.Y);
+                end = new Vector2((pos.X + 1) * squareDimensions.X, (pos.Y + 1) * squareDimensions.Y);
+                break;
+            }
+
+            if (!vertex.HasNeighbor(direction))
+              drawCurve(wri, new List<Vector2> { begin, end }, originX, originY);
+          }
+        }
+
+        wri.WriteLine("</svg>");
       }
     }
   }
