@@ -118,6 +118,9 @@ namespace _098svg
     /// </summary>
     public int goalY = 0;
 
+    /// <summary>
+    /// Width of stroke.
+    /// </summary>
     public int strokeWidth = 0;
 
     /// <summary>
@@ -670,48 +673,33 @@ namespace _098svg
 
       RandomJames random = new RandomJames();
       random.Randomize();
-      
+
       foreach (var vertex in vertices)
       {
-        // There's a wall in given direction and the vertex is not on the border.
-        float randomNumber;
+        float randomNumber = random.RandomFloat(0, 1);
+        if (randomNumber > Difficulty)
+          continue;
+
+        Direction[] directions = new Direction[] { Direction.Up, Direction.Down, Direction.Left, Direction.Right };
+        List<Direction> directionsWithNoNeighbors = new List<Direction>();
+        foreach (var dir in directions)
+          if (!vertex.HasNeighbor(dir))
+            directionsWithNoNeighbors.Add(dir);
+
+        if (directionsWithNoNeighbors.Count == 0)
+          continue;
+
+        Direction direction = directionsWithNoNeighbors[random.RandomInteger(0, directionsWithNoNeighbors.Count - 1)];
+
         Vector2 vertexPos = vertex.GridPosition;
-        if (!vertex.HasNeighbor(Direction.Up) && vertexPos.Y > 0)
-        {
-          randomNumber = random.RandomFloat(0, 1);
-          if (randomNumber <= Difficulty)
-          {
-            AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X, (int)vertexPos.Y - 1);
-            continue;
-          }
-        }
-        if (!vertex.HasNeighbor(Direction.Down) && vertexPos.Y < Heigth - 1)
-        {
-          randomNumber = random.RandomFloat(0, 1);
-          if (randomNumber <= Difficulty)
-          {
-            AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X, (int)vertexPos.Y + 1);
-            continue;
-          }
-        }
-        if (!vertex.HasNeighbor(Direction.Left) && vertexPos.X > 0)
-        {
-          randomNumber = random.RandomFloat(0, 1);
-          if (randomNumber <= Difficulty)
-          {
-            AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X - 1, (int)vertexPos.Y);
-            continue;
-          }   
-        }
-        if (!vertex.HasNeighbor(Direction.Right) && vertexPos.X < Width - 1)
-        {
-          randomNumber = random.RandomFloat(0, 1);
-          if (randomNumber <= Difficulty)
-          {
-            AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X + 1, (int)vertexPos.Y);
-            continue;
-          }
-        }
+        if (direction == Direction.Up && vertexPos.Y > 0)
+          AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X, (int)vertexPos.Y - 1);
+        else if (direction == Direction.Down && vertexPos.Y < Heigth - 1)
+          AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X, (int)vertexPos.Y + 1);
+        else if (direction == Direction.Left && vertexPos.X > 0)
+          AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X - 1, (int)vertexPos.Y);
+        else if (direction == Direction.Right && vertexPos.X < Width - 1)
+          AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X + 1, (int)vertexPos.Y);
       }
     }
     /// <summary>
@@ -852,6 +840,18 @@ namespace _098svg
 
     static public void Generate ()
     {
+
+      /*
+       * Definice: (Obtížnost)
+       * Formálně, uvažujeme-li bludiště jako graf G=(V,E) a jeho doplněk G'=(V,E') do úplné mřížky, pak obtížností je (zde)
+       * chápána pravděpodobnost p∈<0,1>, že pro libovolný vrchol u∈V bude náhodně zvolená hrana uv∈E', kde v∈V bude přidána
+       * do G, tj. vznikne graf G+uv'.
+       * 
+       * Implementace obtížnosti je provedena jako iterace přes všechny vrcholy, přičemž u každého z nich je náhodně vybrána jedna
+       * z doplňkových hran (pravděpodobnost výběru hrany je v rámci vrcholu uniformní) mezi ním a sousedem a s převděopdobností p
+       * je přidána do bludiště (tedy stěna je zbourána).
+      */
+
       wasGenerated = true;
 
       // Generate maze
