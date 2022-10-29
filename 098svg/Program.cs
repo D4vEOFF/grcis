@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data.SqlClient;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
@@ -75,7 +76,7 @@ namespace _098svg
     /// <summary>
     /// Difficulty coefficient (optional).
     /// </summary>
-    public double difficulty = 1.0;
+    public double difficulty = 0.0;
 
     /// <summary>
     /// Maze width in SVG units (for SVG header).
@@ -183,7 +184,7 @@ namespace _098svg
 
         case "difficulty":
           if ( double.TryParse( value, NumberStyles.Float, CultureInfo.InvariantCulture, out newDouble ) &&
-               newDouble > 0.0 )
+               newDouble > 0.0 && newDouble <= 1 )
             difficulty = newDouble;
           break;
 
@@ -496,7 +497,7 @@ namespace _098svg
     /// <summary>
     /// Difficulty of the generated maze ('Normal' by default).
     /// </summary>
-    public Difficulty Difficulty { set; get; }
+    public double Difficulty { set; get; }
     /// <summary>
     /// Start vertex in the grid (null by default).
     /// </summary>
@@ -538,7 +539,7 @@ namespace _098svg
       StartVertex = null;
       GoalVertex = null;
 
-      Difficulty = Difficulty.Normal;
+      Difficulty = .7;
 
       CreateNewGrid();
     }
@@ -663,8 +664,9 @@ namespace _098svg
     /// </summary>
     public void ApplyDifficulty ()
     {
-      float[] chances = new float[] { .3f, .5f, .7f, .9f, 1.1f };
-      float breakChance = chances[(int)Difficulty];
+      // No changes to the maze
+      if (Difficulty <= 0)
+        return;
 
       RandomJames random = new RandomJames();
       random.Randomize();
@@ -677,7 +679,7 @@ namespace _098svg
         if (!vertex.HasNeighbor(Direction.Up) && vertexPos.Y > 0)
         {
           randomNumber = random.RandomFloat(0, 1);
-          if (randomNumber >= breakChance)
+          if (randomNumber <= Difficulty)
           {
             AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X, (int)vertexPos.Y - 1);
             continue;
@@ -686,7 +688,7 @@ namespace _098svg
         if (!vertex.HasNeighbor(Direction.Down) && vertexPos.Y < Heigth - 1)
         {
           randomNumber = random.RandomFloat(0, 1);
-          if (randomNumber >= breakChance)
+          if (randomNumber <= Difficulty)
           {
             AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X, (int)vertexPos.Y + 1);
             continue;
@@ -695,7 +697,7 @@ namespace _098svg
         if (!vertex.HasNeighbor(Direction.Left) && vertexPos.X > 0)
         {
           randomNumber = random.RandomFloat(0, 1);
-          if (randomNumber >= breakChance)
+          if (randomNumber <= Difficulty)
           {
             AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X - 1, (int)vertexPos.Y);
             continue;
@@ -704,7 +706,7 @@ namespace _098svg
         if (!vertex.HasNeighbor(Direction.Right) && vertexPos.X < Width - 1)
         {
           randomNumber = random.RandomFloat(0, 1);
-          if (randomNumber >= breakChance)
+          if (randomNumber <= Difficulty)
           {
             AddEdge((int)vertexPos.X, (int)vertexPos.Y, (int)vertexPos.X + 1, (int)vertexPos.Y);
             continue;
@@ -844,7 +846,7 @@ namespace _098svg
         sb.AppendFormat( CultureInfo.InvariantCulture, "L{0:f2},{1:f2}",
                          workList[ i ].X - x0, workList[ i ].Y - y0 );
 
-      wri.WriteLine("<path d=\"{0}\" stroke=\"{1}\" stroke-width=\"{2}\" fill=\"none\" stroke-linejoin=\"round\"" +
+      wri.WriteLine("<path d=\"{0}\" stroke=\"{1}\" stroke-width=\"{2}\" fill=\"none\" stroke-linejoin=\"round\" " +
         "stroke-linecap=\"round\"/>", sb.ToString(), color, CmdOptions.options.strokeWidth);
     }
 
@@ -854,21 +856,23 @@ namespace _098svg
 
       // Generate maze
       Grid maze = new Grid(CmdOptions.options.columns, CmdOptions.options.rows);
+
       maze.SetStartVertex(CmdOptions.options.startX, CmdOptions.options.startY);
       maze.SetGoalVertex(CmdOptions.options.goalX, CmdOptions.options.goalY);
       maze.GenerateKruskal(CmdOptions.options.seed);
-      maze.Difficulty = (Difficulty)CmdOptions.options.difficulty;
+      maze.Difficulty = CmdOptions.options.difficulty;
       maze.ApplyDifficulty();
       Console.WriteLine(maze.ToString());
 
       GenerateSVG(maze, 0, 0);
     }
+
     static void GenerateSVG(Grid maze, int originX, int originY)
     {
       string fileName = CmdOptions.options.outputFileName;
       if (string.IsNullOrEmpty(fileName))
         fileName = CmdOptions.options.html ? "out.html" : "out.svg";
-      string outFn = Path.Combine( CmdOptions.options.outDir, fileName );
+      string outFn = Path.Combine(CmdOptions.options.outDir, fileName);
 
       // SVG output:
       using (StreamWriter wri = new StreamWriter(outFn))
@@ -885,33 +889,46 @@ namespace _098svg
           wri.WriteLine(string.Format(CultureInfo.InvariantCulture, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{0:f0}\" height=\"{1:f0}\">",
                                         CmdOptions.options.width, CmdOptions.options.height));
 
-        List<Vector2> workList = new List<Vector2>();
         originX -= CmdOptions.options.strokeWidth;
         originY -= CmdOptions.options.strokeWidth;
         Vector2 squareDimensions = new Vector2((int)(CmdOptions.options.width - 2 * CmdOptions.options.strokeWidth) / CmdOptions.options.columns,
           (int)(CmdOptions.options.height - 2 * CmdOptions.options.strokeWidth) / CmdOptions.options.rows);
         IReadOnlyList<IReadOnlyVertex> vertices = maze.Vertices;
 
+        // Mark start and goal square
+        wri.WriteLine($"<rect x=\"{maze.StartVertex.GridPosition.X * squareDimensions.X - originX}\" " +
+          $"y=\"{maze.StartVertex.GridPosition.Y * squareDimensions.Y - originY}\" " +
+              $"width=\"{squareDimensions.X}\" height=\"{squareDimensions.Y}\" stroke-width=\"{CmdOptions.options.strokeWidth}\" " +
+              $"fill=\"green\" />");
+        wri.WriteLine($"<rect x=\"{maze.GoalVertex.GridPosition.X * squareDimensions.X - originX}\" " +
+          $"y=\"{maze.GoalVertex.GridPosition.Y * squareDimensions.Y - originY}\" " +
+              $"width=\"{squareDimensions.X}\" height=\"{squareDimensions.Y}\" stroke-width=\"{CmdOptions.options.strokeWidth}\" " +
+              $"fill=\"red\" />");
+
         Vector2 pos;
         Vector2 begin = new Vector2();
         Vector2 end = new Vector2();
         Direction[] directions = new Direction[] { Direction.Up, Direction.Down, Direction.Left, Direction.Right };
+
+        // Initialize line lists
+        List<List<Vector2>>[] verticalLines = new List<List<Vector2>>[maze.Width + 1];
+        List<List<Vector2>>[] horizonalLines = new List<List<Vector2>>[maze.Heigth + 1];
+        HashSet<List<Vector2>> includedLines = new HashSet<List<Vector2>>();
+        for (int i = 0; i < verticalLines.Length; i++)
+          verticalLines[i] = new List<List<Vector2>>();
+        for (int i = 0; i < horizonalLines.Length; i++)
+          horizonalLines[i] = new List<List<Vector2>>();
+
         foreach (var vertex in vertices)
         {
           pos = vertex.GridPosition;
 
-          // Mark start and goal vertex (square)
-          if (pos == maze.StartVertex.GridPosition)
-            wri.WriteLine($"<rect x=\"{pos.X * squareDimensions.X - originX}\" y=\"{pos.Y * squareDimensions.Y - originY}\" " +
-              $"width=\"{squareDimensions.X}\" height=\"{squareDimensions.Y}\" stroke-width=\"{CmdOptions.options.strokeWidth}\" " +
-              $"fill=\"green\" />");
-          else if (pos == maze.GoalVertex.GridPosition)
-            wri.WriteLine($"<rect x=\"{pos.X * squareDimensions.X - originX}\" y=\"{pos.Y * squareDimensions.Y - originY}\" " +
-              $"width=\"{squareDimensions.X}\" height=\"{squareDimensions.Y}\" stroke-width=\"{CmdOptions.options.strokeWidth}\" " +
-              $"fill=\"red\" />");
-
           foreach (var direction in directions)
           {
+            // Neighbor is present, draw no line
+            if (vertex.HasNeighbor(direction))
+              continue;
+
             switch (direction)
             {
               case Direction.Up:
@@ -932,10 +949,53 @@ namespace _098svg
                 break;
             }
 
-            if (!vertex.HasNeighbor(direction))
-              drawCurve(wri, new List<Vector2> { begin, end }, originX, originY);
+            List<Vector2> newLine = new List<Vector2> { begin, end };
+
+            // Classify line to be drawn and check if it has already been included
+            List<List<Vector2>> rowColumn = null;
+            bool included = false;
+            if (direction == Direction.Up || direction == Direction.Down)
+            {
+              rowColumn = horizonalLines[(int)pos.Y + (direction == Direction.Up ? 0 : 1)];
+              foreach (var line in rowColumn)
+                if (newLine[0].X >= line[0].X && newLine[1].X <= line[1].X)
+                {
+                  included = true;
+                  break;
+                }
+            }
+            else
+            {
+              rowColumn = verticalLines[(int)pos.X + (direction == Direction.Left ? 0 : 1)];
+              foreach (var line in rowColumn)
+                if (newLine[0].Y >= line[0].Y && newLine[1].Y <= line[1].Y)
+                {
+                  included = true;
+                  break;
+                }
+            }
+
+            if (included)
+              continue;
+
+            // Merge if ending of last line matches the beginning of the new one
+            List<Vector2> lastLine = rowColumn.Count > 0 ? rowColumn[rowColumn.Count - 1] :
+              new List<Vector2> { new Vector2(-1, -1), new Vector2(-1, -1) };
+            if (rowColumn.Count == 0 || lastLine[1] != newLine[0])
+              rowColumn.Add(newLine);
+            else
+              lastLine[1] = newLine[1];
           }
         }
+
+        // Draw lines
+        foreach (var row in horizonalLines)
+          foreach (var line in row)
+            drawCurve(wri, line, originX, originY);
+
+        foreach (var column in verticalLines)
+          foreach (var line in column)
+            drawCurve(wri, line, originX, originY);
 
         wri.WriteLine("</svg>");
       }

@@ -6,18 +6,19 @@
 html   		= 1
 seed   		= 0
 
-rows   		= 50
-columns		= 50
-difficulty	= 3
+rows   		= 20
+columns		= 20
+difficulty	= 0.8
 
 startX 		= 0
 startY 		= 0
-goalX  		= 29
-goalY  		= 9
+goalX  		= 19
+goalY  		= 19
 
-width		= 1500
-height		= 1500
-strokeWidth	= 8
+width		= 800
+height		= 800
+strokeWidth	= 5
+
 output 		= out.html
 
 generate
