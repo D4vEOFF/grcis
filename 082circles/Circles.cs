@@ -210,43 +210,6 @@ namespace _082circles
       return pointsInSet;
     }
     /// <summary>
-    /// Draws Mandelbrot Set upon a given canvas.
-    /// </summary>
-    /// <param name="canvas">Canvas to draw on.</param>
-    /// <param name="radius">Radius of circles.</param>
-    /// <param name="maxIterations">Maximum number of iterations.</param>
-    /// <param name="color">Color of the circles.</param>
-    public static void DrawMandelbrot(Canvas canvas, float radius, uint maxIterations, Color color)
-    {
-      // Setup initial drawing params
-      float minRe = -2;
-      float maxRe = 1;
-      float minIm = -1;
-      float maxIm = 1;
-      float stepRe = radius * (maxRe - minRe) / canvas.Width;
-      float stepIm = radius * (maxIm - minIm) / canvas.Height;
-
-      canvas.SetColor(Color.White);
-
-      // Draw Mandelbrot Set
-      Complex number = new Complex();
-      canvas.SetColor(color);
-      for (float re = minRe; re < maxRe; re += stepRe)
-        for (float im = minIm; im < maxIm; im += stepIm)
-        {
-          number.Re = re;
-          number.Im = im;
-
-          uint iterations = BelongsToMandelbrot(number, maxIterations);
-
-          float x = radius * (re - minRe) / stepRe;
-          float y = radius * (im - minIm) / stepIm;
-
-          if (iterations == maxIterations)
-            canvas.FillDisc(x, y, radius);
-        }
-    }
-    /// <summary>
     /// Number of iterations it takes for the complex number to diverge out the
     /// radius (if ever).
     /// </summary>
