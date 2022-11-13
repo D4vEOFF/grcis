@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using CircleCanvas;
 using MathSupport;
@@ -111,7 +113,7 @@ namespace _082circles
       hei     = 520;
       param   = "100,5";
       tooltip = "<uint>,<uint> ... a pair of values: MAXIMUM NUMBER OF ITERATIONS " +
-        "and STEP (SENSITIVITY)";
+        "and STEP (10 by default)";
     }
 
     /// <summary>
@@ -144,12 +146,68 @@ namespace _082circles
       else
         step = 10;
 
-      // Array of iteration amounts
+      Dictionary<uint, List<PointF>> points = new Dictionary<uint, List<PointF>>();
+
+      // Get points belonging to Mandelbrot Set
+      uint radius = 5;
+      object obj = new object();
+      Parallel.For(0, 1 + maxIterations / step, i =>
+      {
+        uint j = (uint)i * step;
+        List<PointF> mandelbrot = GetMandelbrot(j, radius, (uint)c.Width, (uint)c.Height);
+
+        lock (obj)
+        {
+          points[j] = mandelbrot;
+        }
+      });
+
+      // Draw Mandelbrot Set
       for (uint i = 0; i <= maxIterations; i += step)
       {
         double hue = 30 + Math.Round((double)120 * i / maxIterations);
-        DrawMandelbrot(c, 5, i, Arith.HSVToColor(hue, 1, .7));
+        c.SetColor(Arith.HSVToColor(hue, 1, .7));
+        foreach (var point in points[i])
+          c.FillDisc(point.X, point.Y, radius);
       }
+    }
+    /// <summary>
+    /// Returns a list of points belonging to Mandelbrot Set.
+    /// </summary>
+    /// <param name="maxIterations">Maximum number of iterations.</param>
+    /// <param name="radius">Circle radius.</param>
+    /// <param name="width">Canvas width.</param>
+    /// <param name="height">Canvas heigth.</param>
+    /// <returns>List of points in the set.</returns>
+    public static List<PointF> GetMandelbrot(uint maxIterations, uint radius, uint width, uint height)
+    {
+      // Setup initial drawing params
+      float minRe = -2;
+      float maxRe = 1;
+      float minIm = -1;
+      float maxIm = 1;
+      float stepRe = radius * (maxRe - minRe) / width;
+      float stepIm = radius * (maxIm - minIm) / height;
+
+      // Get Mandelbrot set points
+      List<PointF> pointsInSet = new List<PointF>();
+      Complex number = new Complex();
+      for (float re = minRe; re < maxRe; re += stepRe)
+        for (float im = minIm; im < maxIm; im += stepIm)
+        {
+          number.Re = re;
+          number.Im = im;
+
+          uint iterations = BelongsToMandelbrot(number, maxIterations);
+
+          float x = radius * (re - minRe) / stepRe;
+          float y = radius * (im - minIm) / stepIm;
+
+          if (iterations == maxIterations)
+            pointsInSet.Add(new PointF(x, y));
+        }
+
+      return pointsInSet;
     }
     /// <summary>
     /// Draws Mandelbrot Set upon a given canvas.
