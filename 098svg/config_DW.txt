@@ -1,0 +1,32 @@
+# sample configuration file
+#
+# run 098svg.exe application with command-line:
+# 098svg -c config.txt
+
+# Additional options:
+# - startX, startY -> X and Y coordinate of the start
+#	cell (indeces start at 0)
+# - goalX, goalY -> (X and Y ... goal cell)
+# - difficulty -> number from <0,1> interval (the higher the
+#	the easier)
+# - strokeWidth -> width of the stroke (non-negative integer)
+
+html   		= 1
+seed   		= 0
+
+rows   		= 20
+columns		= 20
+difficulty	= 0
+
+startX 		= 0
+startY 		= 0
+goalX  		= 19
+goalY  		= 19
+
+width		= 800
+height		= 800
+strokeWidth	= 5
+
+output 		= out.html
+
+generate

@@ -186,7 +186,8 @@ namespace _098svg
           break;
 
         case "difficulty":
-          if ( double.TryParse( value, NumberStyles.Float, CultureInfo.InvariantCulture, out newDouble ))
+          if ( double.TryParse( value, NumberStyles.Float, CultureInfo.InvariantCulture, out newDouble ) &&
+               newDouble > 0.0 && newDouble <= 1 )
             difficulty = newDouble;
           break;
 
@@ -259,14 +260,6 @@ namespace _098svg
     Down,
     Left,
     Right
-  }
-  enum Difficulty
-  {
-    Peaceful,
-    Easy,
-    Normal,
-    Hard,
-    Hardest
   }
 
   interface IReadOnlyVertex
@@ -467,7 +460,6 @@ namespace _098svg
 
   class Grid
   {
-    private double difficulty;
     private HashSet<Vertex> vertices;
     /// <summary>
     /// Character used to print out the start vertex.
@@ -498,13 +490,9 @@ namespace _098svg
     /// </summary>
     public char VertexCharacter { get; set; }
     /// <summary>
-    /// Difficulty of the generated maze (0.4 by default).
+    /// Difficulty of the generated maze ('Normal' by default).
     /// </summary>
-    public double Difficulty
-    {
-      get => difficulty;
-      set => difficulty = value <= 0 ? Math.Max(0, value) : Math.Min(value, 1);
-    }
+    public double Difficulty { set; get; }
     /// <summary>
     /// Start vertex in the grid (null by default).
     /// </summary>
@@ -538,8 +526,6 @@ namespace _098svg
       GoalVertexCharacter = 'G';
 
       // Maze settings
-      if (width <= 0 || height <= 0)
-        throw new ArgumentException("Width and height must be positive values.");
       Width = width;
       Heigth = height;
 
@@ -548,7 +534,7 @@ namespace _098svg
       StartVertex = null;
       GoalVertex = null;
 
-      difficulty = .4;
+      Difficulty = .7;
 
       CreateNewGrid();
     }
@@ -674,7 +660,7 @@ namespace _098svg
     public void ApplyDifficulty ()
     {
       // No changes to the maze
-      if (difficulty <= 0)
+      if (Difficulty <= 0)
         return;
 
       RandomJames random = new RandomJames();
@@ -683,7 +669,7 @@ namespace _098svg
       foreach (var vertex in vertices)
       {
         float randomNumber = random.RandomFloat(0, 1);
-        if (randomNumber > difficulty)
+        if (randomNumber > Difficulty)
           continue;
 
         Direction[] directions = new Direction[] { Direction.Up, Direction.Down, Direction.Left, Direction.Right };
@@ -849,13 +835,13 @@ namespace _098svg
 
       /*
        * Definice: (Obtížnost)
-       * Formálně, uvažujeme-li bludiště jako graf G=(V,E) a jeho komplement G'=(V,E') do úplné mřížky, pak obtížností je (zde)
-       * chápána pravděpodobnost p∈<0,1>, že pro libovolný vrchol u∈V bude náhodně zvolená hrana uv'∈E', kde v'∈V, bude přidána
+       * Formálně, uvažujeme-li bludiště jako graf G=(V,E) a jeho doplněk G'=(V,E') do úplné mřížky, pak obtížností je (zde)
+       * chápána pravděpodobnost p∈<0,1>, že pro libovolný vrchol u∈V bude náhodně zvolená hrana uv∈E', kde v∈V bude přidána
        * do G, tj. vznikne graf G+uv'.
        * 
        * Implementace obtížnosti je provedena jako iterace přes všechny vrcholy, přičemž u každého z nich je náhodně vybrána jedna
        * z doplňkových hran (pravděpodobnost výběru hrany je v rámci vrcholu uniformní) mezi ním a sousedem a s převděopdobností p
-       * je přidána do bludiště, tedy stěna je zbourána (viz metoda ApplyDifficulty).
+       * je přidána do bludiště (tedy stěna je zbourána).
       */
 
       wasGenerated = true;
@@ -867,7 +853,6 @@ namespace _098svg
       maze.SetGoalVertex(CmdOptions.options.goalX, CmdOptions.options.goalY);
       maze.GenerateKruskal(CmdOptions.options.seed);
       maze.Difficulty = CmdOptions.options.difficulty;
-      Console.WriteLine(maze.Difficulty);
       maze.ApplyDifficulty();
       Console.WriteLine(maze.ToString());
 

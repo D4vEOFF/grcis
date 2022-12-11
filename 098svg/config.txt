@@ -8,15 +8,23 @@ seed   		= 0
 
 rows   		= 20
 columns		= 20
-difficulty	= 0.1
 
+# difficulty parameter is a value from <0,1> interval
+# (greater or lower values will have no effect)
+difficulty	= .1
+
+# Position of the start cell
 startX 		= 0
 startY 		= 0
+
+# Position of the goal cell
 goalX  		= 19
 goalY  		= 19
 
 width		= 800
 height		= 800
+
+# SVG wall width
 strokeWidth	= 5
 
 output 		= out.html
