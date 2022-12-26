@@ -122,10 +122,10 @@ namespace _083animation
       fps  = 25.0;
 
       // Form params.
-      param = "startAngle=0,endAngle=6.283185";
-      tooltip = "startAngle=<double>,endAngle=<double>";
-
-
+      param = "startAngle=0,endAngle=6.283185,maxIter=100," +
+        "step=5,radius=5";
+      tooltip = "startAngle=<double>,endAngle=<double>," +
+        "maxIter=<uint>,step=<uint>,radius=<uint>";
     }
 
     private static bool setParameters = false;
@@ -134,8 +134,9 @@ namespace _083animation
     private static double angle = 0;                              // angle in 0.7885 * e^(i*a)
     private static double angleStep = 0;                          // step to increase the angle with
 
-    private static Complex C;                                     // f(z) = z^2 + c
-
+    private static uint radius = 5;
+    private static uint maxIterations = 100;
+    private static uint step = 0;
 
     /// <summary>
     /// Global initialization. Called before each animation batch
@@ -163,11 +164,9 @@ namespace _083animation
           {
             switch (p.First())
             {
-              case "startAngle":
-                parameters["startAngle"] = double.Parse(p.Last());
-                break;
-              case "endAngle":
-                parameters["endAngle"] = double.Parse(p.Last());
+              // Numeric values
+              default:
+                parameters[p.First()] = double.Parse(p.Last());
                 break;
             }
           }
@@ -177,12 +176,13 @@ namespace _083animation
           MessageBox.Show("ERROR: " + e.Message);
         }
 
-        angleStep = (parameters["endAngle"] - parameters["startAngle"]) / (fps * end);
-        C = 0.7885 * new Complex(Math.Cos(angle), Math.Sin(angle));
+        angleStep = (parameters["endAngle"] - parameters["startAngle"]) / end;
+        radius = (uint)parameters["radius"];
+        maxIterations = (uint)parameters["maxIter"];
+        step = (uint)parameters["step"];
 
         setParameters = true;
       }
-
     }
 
     /// <summary>
@@ -195,7 +195,88 @@ namespace _083animation
     /// <param name="param">Optional string parameter from the form.</param>
     public static void DrawFrame (Canvas c, double time, double start, double end, string param)
     {
-      
+      angle = time * angleStep;
+      //Console.WriteLine(angle);
+
+      // Get points belonging to Julia Set.
+      Dictionary<uint, List<PointF>> points =
+        new Dictionary<uint, List<PointF>>();
+
+      for (int i = 0; i <= maxIterations / step; i++)
+      {
+        uint iterations = (uint)i * step;
+        List<PointF> julia = GetJulia(iterations, (uint)c.Width,
+          (uint)c.Height);
+
+        points[iterations] = julia;
+      }
+
+      // Draw Julia Set
+      for (uint iterations = 0; iterations <= maxIterations; iterations += step)
+      {
+        double hue = 30 + Math.Round((double)120 *
+          iterations / maxIterations);
+        c.SetColor(Arith.HSVToColor(hue, 1, 1));
+        foreach (var point in points[iterations])
+          c.FillDisc(point.X, point.Y, radius);
+      }
+    }
+    /// <summary>
+    /// Returns a list of points belonging to Julia Set (for given angle).
+    /// </summary>
+    /// <param name="maxIterations"></param>
+    /// <param name="radius">Circle radius.</param>
+    /// <param name="width">Canvas width.</param>
+    /// <param name="height">Canvas height.</param>
+    /// <returns>List of points in the set.</returns>
+    public static List<PointF> GetJulia(uint maxIterations, uint width, uint height)
+    {
+      // Setup initial drawing params
+      float minRe = -1.5f;
+      float maxRe = 1.5f;
+      float minIm = -1;
+      float maxIm = 1;
+      float stepRe = radius * (maxRe - minRe) / width;
+      float stepIm = radius * (maxIm - minIm) / height;
+
+      // Get Mandelbrot set points
+      List<PointF> pointsInSet = new List<PointF>();
+      Complex number = new Complex();
+      for (float re = minRe; re < maxRe; re += stepRe)
+        for (float im = minIm; im < maxIm; im += stepIm)
+        {
+          number.Re = re;
+          number.Im = im;
+
+          uint iterations = BelongsToJulia(number, maxIterations);
+
+          float x = radius * (re - minRe) / stepRe;
+          float y = radius * (im - minIm) / stepIm;
+
+          if (iterations == maxIterations)
+            pointsInSet.Add(new PointF(x, y));
+        }
+
+      return pointsInSet;
+    }
+    /// <summary>
+    /// Number of iterations it takes for the complex number to diverge out the
+    /// radius (if ever).
+    /// </summary>
+    /// <param name="number">Number to check</param>
+    /// <param name="maxIterations">Max number of iterations.</param>
+    /// <returns>Number of iterations</returns>
+    public static uint BelongsToJulia (Complex number, uint maxIterations)
+    {
+      Complex z = number;
+      uint i = 0;
+      while (z.Abs < 2 && i < maxIterations)
+      {
+        z = z * z + 0.7885 *
+          new Complex(Math.Cos(angle), Math.Sin(angle));
+        i++;
+      }
+      return i;
     }
   }
 }
