@@ -2,9 +2,11 @@
 // Original authors: Jan Benes, Josef Pelikan
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
+using System.Linq;
 using System.Windows.Forms;
 using MathSupport;
 using OpenglSupport;
@@ -115,6 +117,15 @@ namespace _039terrain
       Application.Idle += new EventHandler( Application_Idle );
     }
 
+    int terrainSizeX = 2;
+    int terrainSizeZ = 2;
+    float diff = .5f;
+
+    int prevIterations = 0;
+
+    float[,] heightMap = null;
+    List<float[,]> iterationsHeightMaps = new List<float[,]>();
+
     /// <summary>
     /// [Re-]generate the terrain data.
     /// </summary>
@@ -123,36 +134,119 @@ namespace _039terrain
     /// <param name="param">Optional text parameter.</param>
     private void Regenerate ( int iterations, float roughness, string param )
     {
-      // !!!{{ TODO: add terrain regeneration code here (to reflect the given terrain parameters)
-
       scene.Reset();
 
-      // dummy rectangle, facing to the camera
-      // notice that your terrain is supposed to be placed
-      // in the XZ plane (elevation increases along the positive Y axis)
-      scene.AddVertex( new Vector3( -0.5f, roughness, -0.5f ) );   // 0
-      scene.AddVertex( new Vector3( -0.5f, 0.0f, +0.5f ) );        // 1
-      scene.AddVertex( new Vector3( +0.5f, 0.0f, -0.5f ) );        // 2
-      scene.AddVertex( new Vector3( +0.5f, 0.0f, +0.5f ) );        // 3
+      Random random = new Random();
+      Vector3 leftCornerPos = new Vector3(-1, 0, -1);
+      float randomness = (float)10e-5;
 
-      scene.SetNormal( 0, (Vector3.UnitY + roughness * (Vector3.UnitX + Vector3.UnitZ)).Normalized() );
-      scene.SetNormal( 1, (Vector3.UnitY + roughness * 0.5f * (Vector3.UnitX + Vector3.UnitZ)).Normalized() );
-      scene.SetNormal( 2, (Vector3.UnitY + roughness * 0.5f * (Vector3.UnitX + Vector3.UnitZ)).Normalized() );
-      scene.SetNormal( 3, Vector3.UnitY );
+      // Initialize
+      if (iterationsHeightMaps.Count == 0)
+      {
+        heightMap = new float[(int)Math.Round(terrainSizeX / diff),
+          (int)Math.Round(terrainSizeZ / diff)];
+        iterationsHeightMaps.Add(heightMap);
 
-      float txtExtreme = 1.0f + iterations;
-      scene.SetTxtCoord( 0, new Vector2( 0.0f, 0.0f ) );
-      scene.SetTxtCoord( 1, new Vector2( 0.0f, txtExtreme ) );
-      scene.SetTxtCoord( 2, new Vector2( txtExtreme, 0.0f ) );
-      scene.SetTxtCoord( 3, new Vector2( txtExtreme, txtExtreme ) );
+        // Debug
+        for (int x = 0; x < heightMap.GetLength(0); x++)
+          for (int z = 0; z < heightMap.GetLength(1); z++)
+            heightMap[x, z] = .25f * (float)random.NextDouble();
 
-      scene.SetColor( 0, Vector3.UnitX );                    // red
-      scene.SetColor( 1, Vector3.UnitY );                    // green
-      scene.SetColor( 2, Vector3.UnitZ );                    // blue
-      scene.SetColor( 3, new Vector3( 1.0f, 1.0f, 1.0f ) );  // white
+        // TODO: Load height map from PNG
+      }
 
-      scene.AddTriangle( 1, 2, 0 );                          // last vertex is red
-      scene.AddTriangle( 2, 1, 3 );                          // last vertex is white
+      // Iterations changed, smoothen terrain
+      if (iterations >= iterationsHeightMaps.Count)
+      {
+        float[,] heightMapNew = null;
+        for (int iteration = prevIterations; iteration < iterations; iteration++)
+        {
+          int xLenght = heightMap.GetLength(0);
+          int zLenght = heightMap.GetLength(1);
+
+          int xLenghtNew = 2 * xLenght - 1;
+          int zLenghtNew = 2 * zLenght - 1;
+
+          heightMapNew = new float[xLenghtNew, zLenghtNew];
+
+          // Copy old height map values
+          int x, z;
+          for (x = 0; x < xLenght; x++)
+            for (z = 0; z < zLenght; z++)
+              heightMapNew[2 * x, 2 * z] = heightMap[x, z];
+
+          heightMap = heightMapNew;
+
+          // Diamond step
+          for (x = 0; x < xLenghtNew - 2; x += 2)
+            for (z = 0; z < zLenghtNew - 2; z += 2)
+            {
+              float height = (heightMap[x, z] + heightMap[x + 2, z]
+              + heightMap[x, z + 2] + heightMap[x + 2, z + 2]) / 4
+              + randomness * (float)random.NextDouble();
+
+              heightMap[x + 1, z + 1] = height;
+            }
+
+          // Square step
+          for (x = 0; x < xLenghtNew; x++)
+            for (z = 0; z < zLenghtNew; z++)
+            {
+              if ((x + z) % 2 == 0)
+                continue;
+
+              float left = x - 1 >= 0 ? heightMap[x - 1, z] : 0;
+              float right = x + 1 < xLenghtNew ? heightMap[x + 1, z] : 0;
+              float bottom = z - 1 >= 0 ? heightMap[x, z - 1] : 0;
+              float top = z + 1 < zLenghtNew ? heightMap[x, z + 1] : 0;
+
+              heightMap[x, z] = (left + right + bottom + top) / 4
+                + randomness * (float)random.NextDouble();
+            }
+        }
+
+        diff /= (int)Math.Pow(2, iterations - prevIterations);
+
+        iterationsHeightMaps.Add(heightMap);
+      }
+      else if (iterations > prevIterations)
+      {
+        heightMap = iterationsHeightMaps[iterations];
+        diff /= (int)Math.Pow(2, iterations - prevIterations);
+      }
+      else
+      {
+        heightMap = iterationsHeightMaps[iterations];
+        diff *= (int)Math.Pow(2, prevIterations - iterations);
+      }
+
+      prevIterations = iterations;
+
+      // Generate terrain
+      int vertexIndex = 0;
+      for (int x = 0; x < heightMap.GetLength(0) - 1; x++)
+      {
+        for (int z = 0; z < heightMap.GetLength(1) - 1; z++)
+        {
+          float y1 = heightMap[x, z];           // bottom-left
+          float y2 = heightMap[x + 1, z];       // bottom-right
+          float y3 = heightMap[x, z + 1];       // top-left
+          float y4 = heightMap[x + 1, z + 1];   // top-right
+
+          // Create square
+          scene.AddVertex(leftCornerPos + new Vector3(x * diff, y1, z * diff));
+          scene.AddVertex(leftCornerPos + new Vector3((x + 1) * diff, y2, z * diff));
+          scene.AddVertex(leftCornerPos + new Vector3(x * diff, y3, (z + 1) * diff));
+          scene.AddVertex(leftCornerPos + new Vector3((x + 1) * diff, y4, (z + 1) * diff));
+
+          // TODO: Set normal vectors
+
+          scene.AddTriangle(vertexIndex, vertexIndex + 1, vertexIndex + 2);
+          scene.AddTriangle(vertexIndex + 3, vertexIndex + 2, vertexIndex + 1);
+
+          vertexIndex += 4;
+        }
+      }
 
       // this function uploads the data to the graphics card
       PrepareData();
@@ -167,8 +261,6 @@ namespace _039terrain
 
       // simulation / hovercraft [re]initialization?
       InitSimulation( false );
-
-      // !!!}}
     }
 
     /// <summary>
